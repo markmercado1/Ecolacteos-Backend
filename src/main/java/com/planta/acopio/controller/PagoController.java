@@ -8,6 +8,7 @@ import com.planta.acopio.dto.PaginaResponse;
 import com.planta.acopio.dto.PagoResponse;
 import com.planta.acopio.service.AjustePagoService;
 import com.planta.acopio.service.AjustePrecioPagoService;
+import com.planta.acopio.service.BoletaPagoService;
 import com.planta.acopio.service.PagoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -18,7 +19,11 @@ import io.swagger.v3.oas.annotations.responses.ApiResponse;
 import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
+import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -35,12 +40,14 @@ public class PagoController {
     private final PagoService pagoService;
     private final AjustePagoService ajustePagoService;
     private final AjustePrecioPagoService ajustePrecioPagoService;
+    private final BoletaPagoService boletaPagoService;
 
     public PagoController(PagoService pagoService, AjustePagoService ajustePagoService,
-                          AjustePrecioPagoService ajustePrecioPagoService) {
+                          AjustePrecioPagoService ajustePrecioPagoService, BoletaPagoService boletaPagoService) {
         this.pagoService = pagoService;
         this.ajustePagoService = ajustePagoService;
         this.ajustePrecioPagoService = ajustePrecioPagoService;
+        this.boletaPagoService = boletaPagoService;
     }
 
     @Operation(
@@ -164,6 +171,27 @@ public class PagoController {
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<List<AjustePrecioPagoResponse>> ajustesDePrecio(@Parameter(description = "Id del pago") @PathVariable UUID id) {
         return ResponseEntity.ok(ajustePrecioPagoService.listarPorPago(id));
+    }
+
+    // Boleta de pago a proveedor en PDF (comprobante interno, no fiscal). El navegador no puede mandar el token en un
+    // enlace directo: el panel la descarga con la sesion (blob) y la abre en otra pestaña.
+    @Operation(summary = "Boleta de pago en PDF", description = "Rol requerido: ADMIN o RECEPCION. Comprobante interno del pago "
+            + "(proveedor, semana, litros, precio, ajustes de precio con su motivo y total a pagar). No es una boleta ni una "
+            + "factura electrónica. Se muestra en línea (inline).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "PDF de la boleta", content = @Content(mediaType = MediaType.APPLICATION_PDF_VALUE)),
+            @ApiResponse(responseCode = "404", description = "No existe un pago con ese id")
+    })
+    @GetMapping(value = "/{id}/boleta", produces = MediaType.APPLICATION_PDF_VALUE)
+    @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
+    public ResponseEntity<byte[]> boleta(@Parameter(description = "Id del pago") @PathVariable UUID id) {
+        byte[] pdf = boletaPagoService.generarPdf(id);
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION, ContentDisposition.inline()
+                        .filename("boleta-pago-" + BoletaPagoService.codigo(id) + ".pdf").build().toString())
+                .cacheControl(CacheControl.noStore())
+                .body(pdf);
     }
 
     @Operation(summary = "Ajustes pendientes de un proveedor", description = "Rol requerido: ADMIN. Ajustes todavía no liquidados, para saber qué queda por saldar.")

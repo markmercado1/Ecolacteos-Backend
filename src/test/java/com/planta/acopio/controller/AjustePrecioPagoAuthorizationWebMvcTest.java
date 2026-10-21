@@ -7,6 +7,7 @@ import com.planta.acopio.config.UsuarioDetailsService;
 import com.planta.acopio.dto.AjustePrecioPagoResponse;
 import com.planta.acopio.service.AjustePagoService;
 import com.planta.acopio.service.AjustePrecioPagoService;
+import com.planta.acopio.service.BoletaPagoService;
 import com.planta.acopio.service.PagoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -27,6 +28,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.*;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -40,6 +42,7 @@ class AjustePrecioPagoAuthorizationWebMvcTest {
     @MockBean private PagoService pagoService;
     @MockBean private AjustePagoService ajustePagoService;
     @MockBean private AjustePrecioPagoService ajustePrecioPagoService;
+    @MockBean private BoletaPagoService boletaPagoService;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 
@@ -106,6 +109,27 @@ class AjustePrecioPagoAuthorizationWebMvcTest {
         mvc.perform(get("/api/pagos/" + pagoId + "/ajustes-precio"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].motivo").value("Reconocimiento por calidad"));
+    }
+
+    @Test
+    @WithMockUser(roles = "RECEPCION")
+    void recepcionYAdminDescarganLaBoletaEnPdfEnLinea() throws Exception {
+        when(boletaPagoService.generarPdf(pagoId)).thenReturn("%PDF-1.4 prueba".getBytes());
+
+        mvc.perform(get("/api/pagos/" + pagoId + "/boleta"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Content-Type", "application/pdf"))
+                .andExpect(header().string("Content-Disposition",
+                        org.hamcrest.Matchers.startsWith("inline; filename=\"boleta-pago-")))
+                .andExpect(header().string("Cache-Control", org.hamcrest.Matchers.containsString("no-store")));
+    }
+
+    @Test
+    @WithMockUser(roles = {"VENTAS", "CALIDAD", "PRODUCCION", "ACOPIADOR"})
+    void otrosRolesNoVenLaBoleta() throws Exception {
+        mvc.perform(get("/api/pagos/" + pagoId + "/boleta")).andExpect(status().isForbidden());
+
+        verifyNoInteractions(boletaPagoService);
     }
 
     @Test
