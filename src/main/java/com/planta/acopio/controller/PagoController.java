@@ -1,10 +1,13 @@
 package com.planta.acopio.controller;
 
 import com.planta.acopio.dto.AjustePagoResponse;
+import com.planta.acopio.dto.AjustePrecioPagoRequest;
+import com.planta.acopio.dto.AjustePrecioPagoResponse;
 import com.planta.acopio.dto.GenerarPagoRequest;
 import com.planta.acopio.dto.PaginaResponse;
 import com.planta.acopio.dto.PagoResponse;
 import com.planta.acopio.service.AjustePagoService;
+import com.planta.acopio.service.AjustePrecioPagoService;
 import com.planta.acopio.service.PagoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -31,10 +34,13 @@ public class PagoController {
 
     private final PagoService pagoService;
     private final AjustePagoService ajustePagoService;
+    private final AjustePrecioPagoService ajustePrecioPagoService;
 
-    public PagoController(PagoService pagoService, AjustePagoService ajustePagoService) {
+    public PagoController(PagoService pagoService, AjustePagoService ajustePagoService,
+                          AjustePrecioPagoService ajustePrecioPagoService) {
         this.pagoService = pagoService;
         this.ajustePagoService = ajustePagoService;
+        this.ajustePrecioPagoService = ajustePrecioPagoService;
     }
 
     @Operation(
@@ -129,6 +135,35 @@ public class PagoController {
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<List<AjustePagoResponse>> ajustesDePago(@Parameter(description = "Id del pago") @PathVariable UUID id) {
         return ResponseEntity.ok(ajustePagoService.listarPorPago(id));
+    }
+
+    // Ajuste del precio por litro de UN pago (V24). El pago original no se modifica; el cambio queda en el historial
+    // con motivo, usuario y fecha. Afecta solo a este pago.
+    @Operation(summary = "Ajustar el precio por litro de un pago", description = "Rol requerido: ADMIN. Cambia el precio por litro "
+            + "SOLO de este pago (p. ej. leche de mala calidad o un reconocimiento extra); el total a pagar se recalcula. El pago "
+            + "original no se modifica: queda un registro con precio anterior, precio nuevo, motivo (obligatorio), usuario y fecha. "
+            + "No cambia el precio general de la leche ni otros pagos. Un nuevo ajuste reemplaza al anterior en el cálculo.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Ajuste registrado", content = @Content(schema = @Schema(implementation = AjustePrecioPagoResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Precio inválido (cero, negativo o igual al actual) o motivo vacío"),
+            @ApiResponse(responseCode = "404", description = "No existe un pago con ese id")
+    })
+    @PostMapping("/{id}/ajuste-precio")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AjustePrecioPagoResponse> ajustarPrecio(@Parameter(description = "Id del pago") @PathVariable UUID id,
+                                                                    @RequestBody @Valid AjustePrecioPagoRequest dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ajustePrecioPagoService.crear(id, dto));
+    }
+
+    @Operation(summary = "Historial de ajustes de precio de un pago", description = "Rol requerido: ADMIN o RECEPCION. Más reciente primero.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Ajustes de precio del pago", content = @Content(array = @ArraySchema(schema = @Schema(implementation = AjustePrecioPagoResponse.class)))),
+            @ApiResponse(responseCode = "404", description = "No existe un pago con ese id")
+    })
+    @GetMapping("/{id}/ajustes-precio")
+    @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
+    public ResponseEntity<List<AjustePrecioPagoResponse>> ajustesDePrecio(@Parameter(description = "Id del pago") @PathVariable UUID id) {
+        return ResponseEntity.ok(ajustePrecioPagoService.listarPorPago(id));
     }
 
     @Operation(summary = "Ajustes pendientes de un proveedor", description = "Rol requerido: ADMIN. Ajustes todavía no liquidados, para saber qué queda por saldar.")

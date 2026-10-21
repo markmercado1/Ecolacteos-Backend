@@ -37,6 +37,7 @@ class PagoServiceTest {
     @Mock private ProveedorRepository proveedorRepository;
     @Mock private RegistroAcopioRepository registroAcopioRepository;
     @Mock private PrecioLitroRepository precioLitroRepository;
+    @Mock private AjustePrecioPagoRepository ajustePrecioRepository;
     @Mock private EntityManager entityManager;
 
     private PagoService service;
@@ -45,7 +46,7 @@ class PagoServiceTest {
     @BeforeEach
     void setUp() {
         service = new PagoService(pagoRepository, proveedorRepository, registroAcopioRepository,
-                precioLitroRepository, entityManager);
+                precioLitroRepository, ajustePrecioRepository, entityManager);
     }
 
     @Test
@@ -120,6 +121,76 @@ class PagoServiceTest {
                 .isInstanceOf(ConflictoNegocioException.class);
 
         verify(pagoRepository, never()).save(any());
+    }
+
+    // Ajuste de precio por pago (V24): el pago original (precioLitro/total) no cambia; precioLitroEfectivo/totalAPagar
+    // reflejan el ajuste mas reciente de ESE pago. Ejemplo del negocio: 100 L a S/ 1.00 = S/ 100 -> a 1.20 = S/ 120.
+    @Test
+    void sinAjustesElTotalAPagarEsElDelPagoOriginal() {
+        Pago pago = pagoGuardado(new BigDecimal("100"), new BigDecimal("1.000"));
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        when(ajustePrecioRepository.findFirstByPagoIdOrderByCreadoEnDescIdDesc(pago.getId())).thenReturn(Optional.empty());
+
+        var respuesta = service.obtener(pago.getId());
+
+        assertThat(respuesta.precioLitro()).isEqualByComparingTo("1.000");
+        assertThat(respuesta.precioLitroEfectivo()).isEqualByComparingTo("1.000");
+        assertThat(respuesta.totalAPagar()).isEqualByComparingTo("100.00");
+    }
+
+    @Test
+    void conUnAjusteElTotalAPagarUsaElPrecioAjustadoYElPagoOriginalNoCambia() {
+        Pago pago = pagoGuardado(new BigDecimal("100"), new BigDecimal("1.000"));
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        AjustePrecioPago ajuste = new AjustePrecioPago();
+        ajuste.setPrecioLitroNuevo(new BigDecimal("1.200"));
+        when(ajustePrecioRepository.findFirstByPagoIdOrderByCreadoEnDescIdDesc(pago.getId())).thenReturn(Optional.of(ajuste));
+
+        var respuesta = service.obtener(pago.getId());
+
+        assertThat(respuesta.precioLitro()).isEqualByComparingTo("1.000"); // original, inmutable
+        assertThat(respuesta.precioLitroEfectivo()).isEqualByComparingTo("1.200");
+        assertThat(respuesta.totalAPagar()).isEqualByComparingTo("120.00");
+    }
+
+    @Test
+    void elTotalAPagarRedondeaCentimosHalfUp() {
+        // 123 L x 1.255 = 154.365 -> 154.37 (mismo redondeo que la columna generada de PostgreSQL)
+        assertThat(PagoService.calcularTotal(new BigDecimal("123"), new BigDecimal("1.255"))).isEqualByComparingTo("154.37");
+    }
+
+    @Test
+    void elListadoResuelveLosPreciosEfectivosConUnaSolaConsultaYSoloAfectaAlPagoAjustado() {
+        Pago ajustado = pagoGuardado(new BigDecimal("100"), new BigDecimal("1.000"));
+        Pago normal = pagoGuardado(new BigDecimal("50"), new BigDecimal("1.000"));
+        var pageable = org.springframework.data.domain.PageRequest.of(0, 10);
+        when(pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable))
+                .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(ajustado, normal), pageable, 2));
+        AjustePrecioPago primero = new AjustePrecioPago();
+        primero.setPago(ajustado);
+        primero.setPrecioLitroNuevo(new BigDecimal("1.200"));
+        AjustePrecioPago segundo = new AjustePrecioPago(); // mas reciente: pisa al primero
+        segundo.setPago(ajustado);
+        segundo.setPrecioLitroNuevo(new BigDecimal("1.500"));
+        when(ajustePrecioRepository.findByPagoIdInOrderByCreadoEnAscIdAsc(any())).thenReturn(List.of(primero, segundo));
+
+        var pagina = service.listar(pageable);
+
+        assertThat(pagina.getContent().get(0).totalAPagar()).isEqualByComparingTo("150.00"); // 100 L x 1.50
+        assertThat(pagina.getContent().get(1).totalAPagar()).isEqualByComparingTo("50.00");  // sin ajuste: sigue a 1.00
+        verify(ajustePrecioRepository, times(1)).findByPagoIdInOrderByCreadoEnAscIdAsc(any());
+        verify(ajustePrecioRepository, never()).findFirstByPagoIdOrderByCreadoEnDescIdDesc(any());
+    }
+
+    private Pago pagoGuardado(BigDecimal litros, BigDecimal precio) {
+        Pago p = new Pago();
+        p.setId(UUID.randomUUID());
+        p.setProveedor(proveedorConId());
+        p.setSemanaInicio(LocalDate.of(2026, 10, 14));
+        p.setSemanaFin(LocalDate.of(2026, 10, 21));
+        p.setLitrosTotales(litros);
+        p.setPrecioLitro(precio);
+        return p;
     }
 
     private Proveedor proveedorConId() {

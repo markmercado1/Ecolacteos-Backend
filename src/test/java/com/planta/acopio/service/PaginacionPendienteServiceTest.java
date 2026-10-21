@@ -34,6 +34,7 @@ class PaginacionPendienteServiceTest {
     @Mock private ProveedorRepository proveedorRepository;
     @Mock private RegistroAcopioRepository registroAcopioRepository;
     @Mock private PrecioLitroRepository precioLitroRepository;
+    @Mock private AjustePrecioPagoRepository ajustePrecioRepository;
     @Mock private EntityManager entityManager;
     @Mock private ComunicadoRepository comunicadoRepository;
     @Mock private ZonaRepository zonaRepository;
@@ -48,7 +49,7 @@ class PaginacionPendienteServiceTest {
     @Test
     void pagosListarUsaLaConsultaPaginadaYConservaElTotal() {
         PagoService service = new PagoService(pagoRepository, proveedorRepository, registroAcopioRepository,
-                precioLitroRepository, entityManager);
+                precioLitroRepository, ajustePrecioRepository, entityManager);
         when(pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 95));
 
         var pagina = service.listar(pageable);
@@ -61,7 +62,7 @@ class PaginacionPendienteServiceTest {
     @Test
     void pagosPorProveedorPaginadoFiltraPorProveedor() {
         PagoService service = new PagoService(pagoRepository, proveedorRepository, registroAcopioRepository,
-                precioLitroRepository, entityManager);
+                precioLitroRepository, ajustePrecioRepository, entityManager);
         UUID proveedorId = UUID.randomUUID();
         when(pagoRepository.findByProveedorIdOrderBySemanaInicioDescIdDesc(proveedorId, pageable))
                 .thenReturn(new PageImpl<>(List.of(), pageable, 31));

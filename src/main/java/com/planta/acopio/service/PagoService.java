@@ -2,6 +2,7 @@ package com.planta.acopio.service;
 
 import com.planta.acopio.dto.GenerarPagoRequest;
 import com.planta.acopio.dto.PagoResponse;
+import com.planta.acopio.entity.AjustePrecioPago;
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.entity.PrecioLitro;
 import com.planta.acopio.entity.Proveedor;
@@ -9,6 +10,7 @@ import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
+import com.planta.acopio.repository.AjustePrecioPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
 import com.planta.acopio.repository.PrecioLitroRepository;
 import com.planta.acopio.repository.ProveedorRepository;
@@ -20,9 +22,13 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
+import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -38,15 +44,17 @@ public class PagoService {
     private final ProveedorRepository proveedorRepository;
     private final RegistroAcopioRepository registroAcopioRepository;
     private final PrecioLitroRepository precioLitroRepository;
+    private final AjustePrecioPagoRepository ajustePrecioRepository;
     private final EntityManager entityManager;
 
     public PagoService(PagoRepository pagoRepository, ProveedorRepository proveedorRepository,
                         RegistroAcopioRepository registroAcopioRepository, PrecioLitroRepository precioLitroRepository,
-                        EntityManager entityManager) {
+                        AjustePrecioPagoRepository ajustePrecioRepository, EntityManager entityManager) {
         this.pagoRepository = pagoRepository;
         this.proveedorRepository = proveedorRepository;
         this.registroAcopioRepository = registroAcopioRepository;
         this.precioLitroRepository = precioLitroRepository;
+        this.ajustePrecioRepository = ajustePrecioRepository;
         this.entityManager = entityManager;
     }
 
@@ -117,8 +125,9 @@ public class PagoService {
     // caliente: GET /api/pagos/proveedor/{id} devolvia 500 antes de este fix.
     @Transactional(readOnly = true)
     public List<PagoResponse> historialPorProveedor(java.util.UUID proveedorId) {
-        return pagoRepository.findByProveedorIdOrderBySemanaInicioDesc(proveedorId).stream()
-                .map(this::toResponse).toList();
+        List<Pago> pagos = pagoRepository.findByProveedorIdOrderBySemanaInicioDesc(proveedorId);
+        Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagos);
+        return pagos.stream().map(p -> toResponse(p, efectivos.get(p.getId()))).toList();
     }
 
     // Auditoria de bajo riesgo (Fase 1): antes solo se podia listar pago por
@@ -130,15 +139,18 @@ public class PagoService {
     // tabla pago crece cada semana por proveedor). Solo lo consume la web.
     @Transactional(readOnly = true)
     public Page<PagoResponse> listar(Pageable pageable) {
-        return pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable).map(this::toResponse);
+        Page<Pago> pagina = pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable);
+        Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagina.getContent());
+        return pagina.map(p -> toResponse(p, efectivos.get(p.getId())));
     }
 
     // Paginacion pendiente: historial por proveedor paginado para la web. La
     // version sin paginar (historialPorProveedor) se mantiene para la app movil.
     @Transactional(readOnly = true)
     public Page<PagoResponse> historialPorProveedor(java.util.UUID proveedorId, Pageable pageable) {
-        return pagoRepository.findByProveedorIdOrderBySemanaInicioDescIdDesc(proveedorId, pageable)
-                .map(this::toResponse);
+        Page<Pago> pagina = pagoRepository.findByProveedorIdOrderBySemanaInicioDescIdDesc(proveedorId, pageable);
+        Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagina.getContent());
+        return pagina.map(p -> toResponse(p, efectivos.get(p.getId())));
     }
 
     // Auditoria CRUD (prioridad MEDIA): faltaba el detalle individual de un pago.
@@ -161,11 +173,43 @@ public class PagoService {
         return toResponse(pago);
     }
 
+    // Total de un pago a un precio dado: mismo redondeo que la columna generada pago.total (NUMERIC(10,2), half-up).
+    static BigDecimal calcularTotal(BigDecimal litros, BigDecimal precioLitro) {
+        return litros.multiply(precioLitro).setScale(2, RoundingMode.HALF_UP);
+    }
+
+    // Precio efectivo de UN pago: el del ajuste de precio mas reciente, o el del pago original si no tiene ajustes.
+    BigDecimal precioEfectivo(Pago p) {
+        return ajustePrecioRepository.findFirstByPagoIdOrderByCreadoEnDescIdDesc(p.getId())
+                .map(AjustePrecioPago::getPrecioLitroNuevo)
+                .orElse(p.getPrecioLitro());
+    }
+
+    // Igual, para varios pagos con UNA sola consulta (los listados no hacen una consulta por fila). Los ajustes llegan
+    // en orden cronologico: el ultimo de cada pago pisa a los anteriores.
+    private Map<UUID, BigDecimal> preciosEfectivos(Collection<Pago> pagos) {
+        Map<UUID, BigDecimal> efectivos = new HashMap<>();
+        if (pagos.isEmpty()) {
+            return efectivos;
+        }
+        for (AjustePrecioPago a : ajustePrecioRepository.findByPagoIdInOrderByCreadoEnAscIdAsc(
+                pagos.stream().map(Pago::getId).toList())) {
+            efectivos.put(a.getPago().getId(), a.getPrecioLitroNuevo());
+        }
+        return efectivos;
+    }
+
     private PagoResponse toResponse(Pago p) {
+        return toResponse(p, precioEfectivo(p));
+    }
+
+    private PagoResponse toResponse(Pago p, BigDecimal precioEfectivo) {
+        BigDecimal efectivo = precioEfectivo != null ? precioEfectivo : p.getPrecioLitro();
         return new PagoResponse(
                 p.getId(), p.getProveedor().getId(), p.getProveedor().getNombre(),
                 p.getSemanaInicio(), p.getSemanaFin(), p.getLitrosTotales(), p.getPrecioLitro(),
                 p.getTotal(), p.getComprobanteGenerado(),
-                p.getRegistrosLiquidados().stream().map(RegistroAcopio::getId).collect(Collectors.toList()));
+                p.getRegistrosLiquidados().stream().map(RegistroAcopio::getId).collect(Collectors.toList()),
+                efectivo, calcularTotal(p.getLitrosTotales(), efectivo));
     }
 }
