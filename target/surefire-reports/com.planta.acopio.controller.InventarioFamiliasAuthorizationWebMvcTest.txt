@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.planta.acopio.controller.InventarioFamiliasAuthorizationWebMvcTest
+-------------------------------------------------------------------------------
+Tests run: 5, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.816 s -- in com.planta.acopio.controller.InventarioFamiliasAuthorizationWebMvcTest

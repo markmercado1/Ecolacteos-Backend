@@ -1,0 +1,20 @@
+-------------------------------------------------------------------------------
+Test set: com.planta.acopio.integration.MigracionProduccionMultiPresentacionIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 1, Failures: 0, Errors: 1, Skipped: 0, Time elapsed: 5.579 s <<< FAILURE! -- in com.planta.acopio.integration.MigracionProduccionMultiPresentacionIntegrationTest
+com.planta.acopio.integration.MigracionProduccionMultiPresentacionIntegrationTest.v12PreservaLosLotesHistoricosConYSinRendimientoYReapuntaVentasYMovimientosALaPresentacionUnidad -- Time elapsed: 1.506 s <<< ERROR!
+org.postgresql.util.PSQLException: 
+ERROR: column "presentacion_id" does not exist
+  Position: 8
+	at org.postgresql.core.v3.QueryExecutorImpl.receiveErrorResponse(QueryExecutorImpl.java:2733)
+	at org.postgresql.core.v3.QueryExecutorImpl.processResults(QueryExecutorImpl.java:2420)
+	at org.postgresql.core.v3.QueryExecutorImpl.execute(QueryExecutorImpl.java:372)
+	at org.postgresql.jdbc.PgStatement.executeInternal(PgStatement.java:517)
+	at org.postgresql.jdbc.PgStatement.execute(PgStatement.java:434)
+	at org.postgresql.jdbc.PgPreparedStatement.executeWithFlags(PgPreparedStatement.java:194)
+	at org.postgresql.jdbc.PgPreparedStatement.executeQuery(PgPreparedStatement.java:137)
+	at com.planta.acopio.integration.MigracionProduccionMultiPresentacionIntegrationTest.v12PreservaLosLotesHistoricosConYSinRendimientoYReapuntaVentasYMovimientosALaPresentacionUnidad(MigracionProduccionMultiPresentacionIntegrationTest.java:199)
+	at java.base/java.lang.reflect.Method.invoke(Method.java:580)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+	at java.base/java.util.ArrayList.forEach(ArrayList.java:1596)
+

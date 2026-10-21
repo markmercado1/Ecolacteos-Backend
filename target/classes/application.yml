@@ -1,0 +1,108 @@
+spring:
+  application:
+    name: acopio-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/acopio_lechero
+    username: postgres
+    password: 123456
+    driver-class-name: org.postgresql.Driver
+
+  jpa:
+    hibernate:
+      # Ddl-auto en 'validate': el esquema lo crea/evoluciona Flyway (fuente
+      # de verdad), Hibernate solo valida que las entidades coincidan con la
+      # BD real -- sin cambios en este bloque, Flyway no reemplaza este rol.
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        format_sql: true
+        jdbc:
+          time_zone: UTC
+
+  # Bloque "Flyway" (confirmado): reemplaza a schema.sql + spring.sql.init
+  # (eliminados -- convivian sin conflicto real porque sql.init.mode ya
+  # estaba en 'never', pero mantener los dos como posible "fuente de verdad"
+  # es justo la confusion que se pidio evitar). baseline-on-migrate=true +
+  # baseline-version=1 es necesario SOLO para bases de datos que ya tenian el
+  # esquema aplicado a mano (como el Postgres de desarrollo de este proyecto)
+  # -- en una BD limpia, Flyway ignora el baseline y aplica V1, V2... normal.
+  flyway:
+    enabled: true
+    baseline-on-migrate: true
+    baseline-version: 1
+    locations: classpath:db/migration
+
+  # Bloque 3 (confirmado): limite de tamano para POST /api/archivos -- el
+  # default de Spring Boot (1MB) es insuficiente para una foto de camara.
+  servlet:
+    multipart:
+      max-file-size: 10MB
+      max-request-size: 10MB
+server:
+  port: ${SERVER_PORT:8080}
+
+# Documentacion OpenAPI/Swagger (esta tarea). Rutas por defecto de springdoc:
+#   /v3/api-docs        -> spec OpenAPI en JSON
+#   /swagger-ui.html     -> Swagger UI (redirige a /swagger-ui/index.html)
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+    operationsSorter: method    # dentro de cada tag: GET, POST, PUT, PATCH, DELETE
+    tagsSorter: alpha
+    disable-swagger-default-url: true
+  api-docs:
+    path: /v3/api-docs
+
+app:
+  security:
+    jwt:
+      secret: ${JWT_SECRET:cambiar-este-secreto-en-produccion-minimo-256-bits-000000}
+      expiration-minutes: 480       # 8h, tolerante a mala señal en campo (CORE_DESIGN.md §15) -- SIN CAMBIOS
+      # Bloque "Token offline" (confirmado): refresh token opaco, rotativo,
+      # guardado como hash -- ver RefreshTokenService. "Periodo razonable"
+      # para varios dias sin conexion; ajustable via env var sin redeploy.
+      refresh-token-dias: ${REFRESH_TOKEN_DIAS:30}
+    # Bloque 8 (confirmado): sin perfiles dev/prod -- lista de origenes
+    # separada por comas, configurable via env var. Nunca incluir "*". El
+    # default de desarrollo (localhost:4200) DEBE cambiarse en produccion.
+    cors:
+      allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:4200}
+    # Bloque 10 (confirmado): bloqueo por email tras intentos fallidos
+    # seguidos, en memoria (por instancia, ver LoginAttemptService).
+    login:
+      max-intentos: 5
+      ventana-bloqueo-minutos: 15
+  registro-acopio:
+    tolerancia-dias-atras: 30       # decisión aprobada §18 punto 7
+    tolerancia-minutos-adelante: 5
+  # Bloque 3 (confirmado): almacenamiento local en disco, sin proveedor
+  # externo. DECISION DE INFRAESTRUCTURA PENDIENTE para producción: este
+  # directorio debe vivir en un volumen persistente si el servidor corre en
+  # un contenedor efímero (si no, las fotos se pierden en cada redeploy).
+  archivos:
+    directorio: ${ARCHIVOS_DIR:uploads}
+  # Fotos publicas del catalogo (producto/presentacion), separadas de las de acopio. Mismo aviso de
+  # infraestructura: en un contenedor efimero este directorio debe ser un volumen persistente.
+  fotos:
+    directorio: ${FOTOS_CATALOGO_DIR:uploads/catalogo}
+  # Fase 1 (control de vencimiento): la ACTIVACION del control por producto esta DESHABILITADA por defecto en
+  # todo entorno real hasta que la Fase 2 (FEFO y bloqueo de vencidos) este implementada y validada. Solo se
+  # habilita en pruebas. Desactivar un control ya activo siempre esta permitido (camino de reversa).
+  vencimiento:
+    activacion-habilitada: ${VENCIMIENTO_ACTIVACION_HABILITADA:false}
+    # Fase 2: zona horaria con la que se decide si un lote esta vencido (el dia de vencimiento es inclusive).
+    # La planta opera en Lima; no asumir la zona del servidor.
+    zona-horaria: ${VENCIMIENTO_ZONA_HORARIA:America/Lima}
+
+  # Fase 3 (catalogo publico). Estado "pocas unidades": stock VENDIBLE entre 1 y este umbral (inclusive). El resultado
+  # se conserva en memoria este numero de segundos (0 = sin cache) para que un endpoint sin autenticacion no
+  # recalcule contra la base en cada visita.
+  catalogo:
+    umbral-pocas-unidades: ${CATALOGO_UMBRAL_POCAS_UNIDADES:5}
+    cache-segundos: ${CATALOGO_CACHE_SEGUNDOS:30}
+
+logging:
+  level:
+    com.planta.acopio: INFO

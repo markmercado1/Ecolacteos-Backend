@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.planta.acopio.integration.SchemaIntegrationTest
+-------------------------------------------------------------------------------
+Tests run: 2, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 4.476 s -- in com.planta.acopio.integration.SchemaIntegrationTest

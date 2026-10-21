@@ -1,0 +1,4 @@
+-------------------------------------------------------------------------------
+Test set: com.planta.acopio.service.VentaServiceTest
+-------------------------------------------------------------------------------
+Tests run: 16, Failures: 0, Errors: 0, Skipped: 0, Time elapsed: 0.142 s -- in com.planta.acopio.service.VentaServiceTest

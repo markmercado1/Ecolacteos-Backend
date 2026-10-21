@@ -1,0 +1,28 @@
+package com.planta.acopio.dto;
+
+import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotEmpty;
+import jakarta.validation.constraints.NotNull;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+
+// Fase 4 (Venta multi-linea / carrito): endpoint nuevo, exclusivo de la web -- el contrato movil
+// (VentaRequest, una sola linea) no se toca (ver SyncService.procesarLoteVentas). `detalles` nunca es una
+// lista vacia (a diferencia de CrearLoteRequest, una venta sin ninguna linea no tiene sentido de negocio):
+// exige al menos una presentacion. Precio se resuelve en el servidor por cada linea (misma autoridad que
+// VentaRequest.precioUnitario, que nunca se acepta del cliente).
+public record CrearVentaCarritoRequest(
+    @NotBlank String uuidCliente,           // idempotencia: reenviar el mismo valor nunca duplica la venta
+    @NotNull LocalDate fecha,
+    @NotBlank String tipoCliente,            // MAYORISTA | PROVEEDOR | PUBLICO
+    @NotEmpty @Valid List<@NotNull DetalleVentaRequest> detalles,
+    // Fase 4 (opcional, solo web): la venta es el RETIRO de una reserva confirmada. La venta y el paso de la reserva a
+    // RETIRADA ocurren en la misma transaccion (si la venta falla, la reserva sigue confirmada). Exige canal PUBLICO.
+    UUID reservaId
+) {
+    public CrearVentaCarritoRequest(String uuidCliente, LocalDate fecha, String tipoCliente, List<DetalleVentaRequest> detalles) {
+        this(uuidCliente, fecha, tipoCliente, detalles, null);
+    }
+}
