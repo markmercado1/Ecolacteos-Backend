@@ -7,4 +7,5 @@ import java.util.UUID;
 
 public interface MotivoObservacionRepository extends JpaRepository<MotivoObservacion, UUID> {
     List<MotivoObservacion> findByActivoTrue();
+    List<MotivoObservacion> findByActivoTrue(org.springframework.data.domain.Sort sort);
 }

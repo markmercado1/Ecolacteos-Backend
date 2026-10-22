@@ -816,10 +816,10 @@ class ReservaIntegrationTest {
         ReservaPublicaResponse antigua = confirmada(telefonoNuevo(), hoy.plusDays(1), pr, 6);
         ReservaPublicaResponse nueva = reservar(telefonoNuevo(), hoy.plusDays(2), pr, 2);
 
-        var porCodigo = reservaService.listar(null, null, null, antigua.codigo().toLowerCase(), PageRequest.of(0, 20)).contenido();
+        var porCodigo = reservaService.listar(null, null, null, antigua.codigo().toLowerCase(), null, PageRequest.of(0, 20)).contenido();
         assertThat(porCodigo).extracting(x -> x.codigo()).containsExactly(antigua.codigo());
         assertThat(porCodigo.get(0).sinCobertura()).isFalse();
-        assertThat(reservaService.listar(null, null, null, "NOEXISTE00", PageRequest.of(0, 20)).contenido()).isEmpty();
+        assertThat(reservaService.listar(null, null, null, "NOEXISTE00", null, PageRequest.of(0, 20)).contenido()).isEmpty();
 
         var fila = filaDeStock(pr);
         assertThat(fila.stock()).isEqualTo(10);
@@ -828,7 +828,7 @@ class ReservaIntegrationTest {
         assertThat(fila.stockLibre()).as("10 vendibles - 8 reservadas").isEqualTo(2);
 
         ajusteInventarioService.crear(new AjusteInventarioRequest(pr.getId(), 2, "Conteo: -8")); // la perdida SI se registra
-        var tras = reservaService.listar(null, null, null, null, PageRequest.of(0, 100)).contenido();
+        var tras = reservaService.listar(null, null, null, null, null, PageRequest.of(0, 100)).contenido();
         assertThat(tras.stream().filter(x -> x.codigo().equals(antigua.codigo())).findFirst().orElseThrow().sinCobertura()).isTrue();
         assertThat(tras.stream().filter(x -> x.codigo().equals(nueva.codigo())).findFirst().orElseThrow().sinCobertura())
                 .as("la mas antigua tiene prioridad: la nueva todavia cabe").isFalse();
@@ -951,8 +951,8 @@ class ReservaIntegrationTest {
         assertThat(reservaService.obtener(idDe(r)).estado()).isEqualTo(EstadoReserva.VENCIDA);
         assertThat(reservaService.consultar(new ConsultaReservaRequest(r.codigo(),
                 jdbc.queryForObject("SELECT telefono FROM reserva WHERE codigo = ?", String.class, r.codigo()))).estado()).isEqualTo(EstadoReserva.VENCIDA);
-        assertThat(reservaService.listar("VENCIDA", null, null, null, PageRequest.of(0, 100)).contenido()).extracting(x -> x.codigo()).contains(r.codigo());
-        assertThat(reservaService.listar("PENDIENTE", null, null, null, PageRequest.of(0, 100)).contenido()).extracting(x -> x.codigo()).doesNotContain(r.codigo());
+        assertThat(reservaService.listar("VENCIDA", null, null, null, null, PageRequest.of(0, 100)).contenido()).extracting(x -> x.codigo()).contains(r.codigo());
+        assertThat(reservaService.listar("PENDIENTE", null, null, null, null, PageRequest.of(0, 100)).contenido()).extracting(x -> x.codigo()).doesNotContain(r.codigo());
         assertThatThrownBy(() -> reservaService.confirmar(idDe(r))).isInstanceOf(ConflictoNegocioException.class).hasMessageContaining("VENCIDA");
         assertThatThrownBy(() -> reservaService.rechazar(idDe(r), new MotivoReservaRequest("x"))).isInstanceOf(ConflictoNegocioException.class);
         assertThat(libro(pr.getId())).as("vencer no mueve el stock").isEqualTo(10);

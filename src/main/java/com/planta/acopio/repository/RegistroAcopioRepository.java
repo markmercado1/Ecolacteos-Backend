@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.RegistroAcopio;
+import com.planta.acopio.service.BusquedaTexto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -117,8 +118,9 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
             "(CAST(:fechaFin AS timestamp) IS NULL OR r.fecha_hora < CAST(:fechaFin AS timestamp)) AND " +
             "(CAST(:zonaId AS uuid) IS NULL OR p.zona_actual_id = CAST(:zonaId AS uuid)) AND " +
             "(:sinAnalisis = false OR NOT EXISTS (SELECT 1 FROM analisis_calidad a WHERE a.registro_acopio_id = r.id)) AND " +
-            "(CAST(:busqueda AS varchar) IS NULL OR LOWER(p.nombre) LIKE CAST(:busqueda AS varchar) ESCAPE '!' " +
-            "OR LOWER(u.placa) LIKE CAST(:busqueda AS varchar) ESCAPE '!') ";
+            "(" + BusquedaTexto.SIN_TERMINO + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "u.placa" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
 
     String DESDE_REGISTRO =
             "FROM registro_acopio r JOIN proveedor p ON r.proveedor_id = p.id JOIN unidad u ON r.unidad_id = u.id WHERE ";

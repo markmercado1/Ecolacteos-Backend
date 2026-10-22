@@ -7,4 +7,5 @@ import java.util.UUID;
 
 public interface FamiliaRepository extends JpaRepository<Familia, UUID> {
     List<Familia> findByActivoTrue();
+    List<Familia> findByActivoTrue(org.springframework.data.domain.Sort sort);
 }

@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Proveedor;
+import com.planta.acopio.service.BusquedaTexto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -27,11 +28,20 @@ public interface ProveedorRepository extends JpaRepository<Proveedor, UUID> {
     // (todos) o el patron ya escapado con '!' (BusquedaTexto.patronLikeOTodos);
     // nombre y dni son NOT NULL. Desempate por id para un orden estable entre
     // paginas cuando dos proveedores se llaman igual.
-    @Query("SELECT p FROM Proveedor p WHERE " +
-           "(:zonaId IS NULL OR p.zonaActual.id = :zonaId) AND " +
-           "(:activo IS NULL OR p.activo = :activo) AND " +
-           "(LOWER(p.nombre) LIKE :busqueda ESCAPE '!' OR LOWER(p.dni) LIKE :busqueda ESCAPE '!') " +
-           "ORDER BY p.nombre, p.id")
+    //
+    // Busqueda sin acentos ni mayusculas: pasa de JPQL a SQL nativo (TRANSLATE no existe en JPQL), con el mismo patron de
+    // casts explicitos que UsuarioRepository. :busqueda llega ya plegado y escapado (BusquedaTexto.patronLike) o null.
+    String FILTROS_PROVEEDOR =
+            "FROM proveedor p WHERE " +
+            "(CAST(:zonaId AS uuid) IS NULL OR p.zona_actual_id = CAST(:zonaId AS uuid)) AND " +
+            "(CAST(:activo AS boolean) IS NULL OR p.activo = CAST(:activo AS boolean)) AND " +
+            "(" + BusquedaTexto.SIN_TERMINO + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "p.dni" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
+
+    @Query(value = "SELECT p.* " + FILTROS_PROVEEDOR + "ORDER BY p.creado_en DESC, p.nombre, p.id",
+           countQuery = "SELECT count(*) " + FILTROS_PROVEEDOR,
+           nativeQuery = true)
     Page<Proveedor> buscarConFiltros(@Param("zonaId") UUID zonaId, @Param("activo") Boolean activo,
                                      @Param("busqueda") String busqueda, Pageable pageable);
 }

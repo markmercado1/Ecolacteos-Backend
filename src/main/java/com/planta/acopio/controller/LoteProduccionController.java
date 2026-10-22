@@ -70,8 +70,9 @@ public class LoteProduccionController {
     // se comporta exactamente igual que antes (no rompe al frontend actual).
     @Operation(
             summary = "Listar lotes de producción (paginado)",
-            description = "`fecha`, `productoId` y `estado` son opcionales y combinables. `page` (default 0) y "
-                    + "`size` (default 20, máx. 100) controlan la paginación real."
+            description = "`fecha`, `productoId`, `estado` y `busqueda` son opcionales y combinables. `busqueda` busca en el "
+                    + "producto o el responsable, entre TODOS los lotes (contiene, sin distinguir mayúsculas ni acentos). "
+                    + "`page` (default 0) y `size` (default 20, máx. 100) controlan la paginación real."
     )
     @ApiResponse(responseCode = "200", description = "Página de lotes encontrados", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
@@ -79,10 +80,11 @@ public class LoteProduccionController {
             @Parameter(description = "Filtrar por fecha exacta") @RequestParam(required = false) LocalDate fecha,
             @Parameter(description = "Filtrar por producto") @RequestParam(required = false) UUID productoId,
             @Parameter(description = "Filtrar por estado: PLANIFICADA, EN_PRODUCCION, FINALIZADA o CANCELADA") @RequestParam(required = false) EstadoLote estado,
+            @Parameter(description = "Producto o responsable (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
-        return ResponseEntity.ok(PaginaResponse.de(loteProduccionService.buscar(fecha, productoId, estado, pageable)));
+        return ResponseEntity.ok(PaginaResponse.de(loteProduccionService.buscar(fecha, productoId, estado, busqueda, pageable)));
     }
 
     // --- V18: producción planificada desde receta ---

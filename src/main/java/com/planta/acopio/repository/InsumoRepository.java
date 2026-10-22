@@ -12,6 +12,7 @@ import java.util.UUID;
 
 public interface InsumoRepository extends JpaRepository<Insumo, UUID> {
     List<Insumo> findByActivoTrue();
+    List<Insumo> findByActivoTrue(org.springframework.data.domain.Sort sort);
 
     // Consumo de insumos al producir (V18, recetas): descuento ATOMICO y condicionado en una sola sentencia
     // -- el UPDATE toma el bloqueo de fila, relee el stock ya confirmado por otras transacciones (READ

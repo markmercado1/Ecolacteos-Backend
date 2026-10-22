@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Usuario;
+import com.planta.acopio.service.BusquedaTexto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.Query;
@@ -23,10 +24,11 @@ public interface UsuarioRepository extends JpaRepository<Usuario, UUID> {
             "FROM usuario u JOIN rol r ON u.rol_id = r.id WHERE " +
             "(CAST(:rol AS varchar) IS NULL OR r.nombre = CAST(:rol AS varchar)) AND " +
             "(CAST(:activo AS boolean) IS NULL OR u.activo = CAST(:activo AS boolean)) AND " +
-            "(CAST(:busqueda AS varchar) IS NULL OR LOWER(u.nombre) LIKE CAST(:busqueda AS varchar) ESCAPE '!' " +
-            "OR LOWER(u.email) LIKE CAST(:busqueda AS varchar) ESCAPE '!') ";
+            "(" + BusquedaTexto.SIN_TERMINO + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "u.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "u.email" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
 
-    @Query(value = "SELECT u.* " + FILTROS_USUARIO + "ORDER BY u.nombre, u.id",
+    @Query(value = "SELECT u.* " + FILTROS_USUARIO + "ORDER BY u.creado_en DESC, u.nombre, u.id",
            countQuery = "SELECT count(*) " + FILTROS_USUARIO,
            nativeQuery = true)
     Page<Usuario> buscarConFiltros(@Param("rol") String rol, @Param("activo") Boolean activo,

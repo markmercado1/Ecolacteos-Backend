@@ -50,9 +50,9 @@ class PaginacionPendienteServiceTest {
     void pagosListarUsaLaConsultaPaginadaYConservaElTotal() {
         PagoService service = new PagoService(pagoRepository, proveedorRepository, registroAcopioRepository,
                 precioLitroRepository, ajustePrecioRepository, entityManager);
-        when(pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 95));
+        when(pagoRepository.buscar(null, pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 95));
 
-        var pagina = service.listar(pageable);
+        var pagina = service.listar(null, pageable);
 
         assertThat(pagina.getTotalElements()).isEqualTo(95);
         assertThat(pagina.getTotalPages()).isEqualTo(10);
@@ -77,9 +77,9 @@ class PaginacionPendienteServiceTest {
     void comunicadosListarUsaLaConsultaPaginada() {
         ComunicadoService service = new ComunicadoService(comunicadoRepository, zonaRepository, proveedorRepository,
                 usuarioRepository, confirmacionRepository);
-        when(comunicadoRepository.findAllByOrderByFechaDescIdDesc(pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 12));
+        when(comunicadoRepository.buscar(null, pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 12));
 
-        assertThat(service.listar(pageable).getTotalElements()).isEqualTo(12);
+        assertThat(service.listar(null, pageable).getTotalElements()).isEqualTo(12);
     }
 
     @Test
@@ -140,9 +140,18 @@ class PaginacionPendienteServiceTest {
     void busquedaTextoEscapaComodinesYNormaliza() {
         assertThat(BusquedaTexto.patronLike(null)).isNull();
         assertThat(BusquedaTexto.patronLike("   ")).isNull();
-        assertThat(BusquedaTexto.patronLike(" Pérez ")).isEqualTo("%pérez%");
+        assertThat(BusquedaTexto.patronLike(" Pérez ")).isEqualTo("%perez%"); // sin acentos ni mayúsculas
         assertThat(BusquedaTexto.patronLike("50%_!")).isEqualTo("%50!%!_!!%");
         assertThat(BusquedaTexto.patronLikeOTodos(null)).isEqualTo("%");
         assertThat(BusquedaTexto.patronLikeOTodos("ab")).isEqualTo("%ab%");
+    }
+
+    @Test
+    void comunicadosListarPliegaLaBusquedaSinAcentosNiMayusculas() {
+        ComunicadoService service = new ComunicadoService(comunicadoRepository, zonaRepository, proveedorRepository,
+                usuarioRepository, confirmacionRepository);
+        when(comunicadoRepository.buscar("%reunion%", pageable)).thenReturn(new PageImpl<>(List.of(), pageable, 1));
+
+        assertThat(service.listar(" Reunión ", pageable).getTotalElements()).isEqualTo(1);
     }
 }

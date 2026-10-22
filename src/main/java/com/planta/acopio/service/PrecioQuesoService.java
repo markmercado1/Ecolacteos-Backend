@@ -85,7 +85,7 @@ public class PrecioQuesoService {
     // SIN_PRECIO con el mismo criterio que buscarVigenteOFallar, sin lanzar excepcion (esto es una vista de
     // catalogo, no una resolucion de venta).
     public PaginaResponse<FilaPrecioPresentacionResponse> listarPaginado(UUID familiaId, String busqueda, Pageable pageable) {
-        Page<Object[]> filas = presentacionRepository.buscarFilasPrecios(familiaId, busqueda, pageable);
+        Page<Object[]> filas = presentacionRepository.buscarFilasPrecios(familiaId, BusquedaTexto.patronLike(busqueda), pageable);
 
         List<UUID> presentacionIds = filas.getContent().stream()
                 .map(fila -> (UUID) fila[4])

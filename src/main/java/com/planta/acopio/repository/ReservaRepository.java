@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Reserva;
+import com.planta.acopio.service.BusquedaTexto;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -50,9 +51,15 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
             + "       OR (r.estado = 'PENDIENTE' AND r.expira_en <= :ahora) OR (r.estado = 'CONFIRMADA' AND r.fecha_retiro < :hoy))) "
             + "  OR (CAST(:estado AS varchar) = 'PENDIENTE' AND r.estado = 'PENDIENTE' AND r.expira_en > :ahora) "
             + "  OR (CAST(:estado AS varchar) = 'CONFIRMADA' AND r.estado = 'CONFIRMADA' AND r.fecha_retiro >= :hoy) "
-            + "  OR (CAST(:estado AS varchar) IN ('RECHAZADA', 'CANCELADA', 'RETIRADA') AND r.estado = CAST(:estado AS varchar)))";
+            + "  OR (CAST(:estado AS varchar) IN ('RECHAZADA', 'CANCELADA', 'RETIRADA') AND r.estado = CAST(:estado AS varchar))) "
+            // Busqueda de texto (sin acentos ni mayusculas): nombre del cliente, telefono o codigo, ademas de los filtros exactos.
+            + "AND (" + BusquedaTexto.SIN_TERMINO + " OR "
+            + BusquedaTexto.PLEGAR_ABRE + "r.nombre_cliente" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
+            + BusquedaTexto.PLEGAR_ABRE + "r.telefono" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
+            + BusquedaTexto.PLEGAR_ABRE + "r.codigo" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ")";
 
     @Query(value = "SELECT r.* " + FILTRO + " ORDER BY r.creado_en DESC, r.id", countQuery = "SELECT count(*) " + FILTRO, nativeQuery = true)
     Page<Reserva> buscar(@Param("estado") String estado, @Param("fecha") LocalDate fecha, @Param("telefono") String telefono,
-                         @Param("codigo") String codigo, @Param("ahora") LocalDateTime ahora, @Param("hoy") LocalDate hoy, Pageable pageable);
+                         @Param("codigo") String codigo, @Param("busqueda") String busqueda, @Param("ahora") LocalDateTime ahora,
+                         @Param("hoy") LocalDate hoy, Pageable pageable);
 }

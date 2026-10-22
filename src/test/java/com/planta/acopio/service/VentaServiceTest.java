@@ -126,11 +126,11 @@ class VentaServiceTest {
 
     @Test
     void buscarSinFiltrosPropagaAmbosParametrosComoNull() {
-        when(repository.buscarConFiltros(isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
-        service.buscar(null, null, pageable);
+        service.buscar(null, null, null, pageable);
 
-        verify(repository).buscarConFiltros(null, null, pageable);
+        verify(repository).buscarConFiltros(null, null, null, pageable);
     }
 
     // El repositorio recibe tipoCliente como String (necesario para la query
@@ -139,16 +139,16 @@ class VentaServiceTest {
     @Test
     void buscarNormalizaElTipoClienteAntesDeConsultar() {
         LocalDate fecha = LocalDate.of(2026, 9, 10);
-        when(repository.buscarConFiltros(fecha, "MAYORISTA", pageable)).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(fecha, "MAYORISTA", null, pageable)).thenReturn(new PageImpl<>(List.of()));
 
-        service.buscar(fecha, "MAYORISTA", pageable);
+        service.buscar(fecha, "MAYORISTA", null, pageable);
 
-        verify(repository).buscarConFiltros(fecha, "MAYORISTA", pageable);
+        verify(repository).buscarConFiltros(fecha, "MAYORISTA", null, pageable);
     }
 
     @Test
     void buscarRechazaUnTipoClienteQueNoEsUnValorLegalDelEnum() {
-        assertThatThrownBy(() -> service.buscar(null, "NO_EXISTE", pageable))
+        assertThatThrownBy(() -> service.buscar(null, "NO_EXISTE", null, pageable))
                 .isInstanceOf(IllegalArgumentException.class);
     }
 
@@ -158,9 +158,9 @@ class VentaServiceTest {
     void buscarPropagaLaMetadataDePaginacion() {
         var pageableChico = PageRequest.of(1, 2);
         var paginaSimulada = new PageImpl<Venta>(List.of(), pageableChico, 5);
-        when(repository.buscarConFiltros(isNull(), isNull(), eq(pageableChico))).thenReturn(paginaSimulada);
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageableChico))).thenReturn(paginaSimulada);
 
-        var resultado = service.buscar(null, null, pageableChico);
+        var resultado = service.buscar(null, null, null, pageableChico);
 
         assertThat(resultado.getNumber()).isEqualTo(1);
         assertThat(resultado.getSize()).isEqualTo(2);
@@ -449,5 +449,14 @@ class VentaServiceTest {
                 .hasMessageContaining("más de una vez");
 
         verify(repository, never()).saveAndFlush(any());
+    }
+
+    @Test
+    void buscarPliegaElTextoSinAcentosNiMayusculas() {
+        when(repository.buscarConFiltros(isNull(), isNull(), eq("%freson%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+
+        service.buscar(null, null, "  FRESÓN ", pageable);
+
+        verify(repository).buscarConFiltros(null, null, "%freson%", pageable);
     }
 }

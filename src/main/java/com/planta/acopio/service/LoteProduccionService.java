@@ -689,8 +689,10 @@ public class LoteProduccionService {
     }
 
     @Transactional(readOnly = true)
-    public Page<LoteProduccionResponse> buscar(LocalDate fecha, UUID productoId, EstadoLote estado, Pageable pageable) {
-        return repository.buscarConFiltros(fecha, productoId, estado != null ? estado.name() : null, pageable)
+    public Page<LoteProduccionResponse> buscar(LocalDate fecha, UUID productoId, EstadoLote estado, String busqueda,
+                                               Pageable pageable) {
+        return repository.buscarConFiltros(fecha, productoId, estado != null ? estado.name() : null,
+                        BusquedaTexto.patronLike(busqueda), pageable)
                 .map(this::toResponse);
     }
 

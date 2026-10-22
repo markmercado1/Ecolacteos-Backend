@@ -49,14 +49,16 @@ public class ComunicadoController {
     // Auditoria de bajo riesgo (Fase 1): listado global -- antes solo se
     // podia consultar comunicado por zona, uno a la vez.
     @Operation(summary = "Listar todos los comunicados (paginado)", description = "Rol requerido: ADMIN. Todas las zonas, "
-            + "orden descendente por fecha (desempate por id). page empieza en 0; size se acota a 1..100.")
+            + "el más reciente primero. `busqueda` (opcional) busca en el mensaje o en el nombre de una zona destino, entre "
+            + "TODOS los comunicados (contiene, sin distinguir mayúsculas ni acentos). page empieza en 0; size se acota a 1..100.")
     @ApiResponse(responseCode = "200", description = "Página de comunicados", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<PaginaResponse<ComunicadoResponse>> listar(
+            @Parameter(description = "Mensaje o zona destino (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(PaginaResponse.de(comunicadoService.listar(Paginacion.de(page, size))));
+        return ResponseEntity.ok(PaginaResponse.de(comunicadoService.listar(busqueda, Paginacion.de(page, size))));
     }
 
     @Operation(

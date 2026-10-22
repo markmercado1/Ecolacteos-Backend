@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.RecepcionPlanta;
+import com.planta.acopio.service.BusquedaTexto;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -28,15 +29,23 @@ public interface RecepcionPlantaRepository extends JpaRepository<RecepcionPlanta
     // con filtro por fecha). Nativa con casts explicitos, probada contra
     // Postgres real.
     // Paginacion real (confirmado): countQuery explicito para query nativa.
-    @Query(value = "SELECT * FROM recepcion_planta WHERE " +
-           "(CAST(:unidadId AS uuid) IS NULL OR unidad_id = CAST(:unidadId AS uuid)) AND " +
-           "(CAST(:fecha AS date) IS NULL OR fecha = CAST(:fecha AS date)) " +
-           "ORDER BY fecha DESC, id DESC",
-           countQuery = "SELECT count(*) FROM recepcion_planta WHERE " +
-           "(CAST(:unidadId AS uuid) IS NULL OR unidad_id = CAST(:unidadId AS uuid)) AND " +
-           "(CAST(:fecha AS date) IS NULL OR fecha = CAST(:fecha AS date))",
+    // Busqueda de texto: placa de la unidad o nombre del responsable (sin acentos ni mayusculas), sobre TODAS las
+    // recepciones del filtro, antes de paginar. Orden: fecha mas reciente primero y, dentro del mismo dia, la
+    // recepcion creada mas recientemente primero (creado_en; el id es un UUID aleatorio).
+    String FILTROS_RECEPCION =
+            "FROM recepcion_planta r JOIN unidad un ON un.id = r.unidad_id " +
+            "LEFT JOIN usuario u ON u.id = r.responsable_id WHERE " +
+            "(CAST(:unidadId AS uuid) IS NULL OR r.unidad_id = CAST(:unidadId AS uuid)) AND " +
+            "(CAST(:fecha AS date) IS NULL OR r.fecha = CAST(:fecha AS date)) AND " +
+            "(" + BusquedaTexto.SIN_TERMINO + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "un.placa" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "u.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
+
+    @Query(value = "SELECT r.* " + FILTROS_RECEPCION + "ORDER BY r.fecha DESC, r.creado_en DESC, r.id DESC",
+           countQuery = "SELECT count(*) " + FILTROS_RECEPCION,
            nativeQuery = true)
-    Page<RecepcionPlanta> buscarConFiltros(@Param("unidadId") UUID unidadId, @Param("fecha") LocalDate fecha, Pageable pageable);
+    Page<RecepcionPlanta> buscarConFiltros(@Param("unidadId") UUID unidadId, @Param("fecha") LocalDate fecha,
+                                           @Param("busqueda") String busqueda, Pageable pageable);
 
     // Fix trazabilidad (confirmado): mismo patron que PagoRepository.existeRegistroYaLiquidado
     // / LoteProduccionRepository.existeRegistroYaVinculadoAOtroLote -- evita que

@@ -93,7 +93,7 @@ class PaginacionPendienteWebMvcTest {
     @Test
     @WithMockUser(roles = "RECEPCION")
     void listarPagosDevuelvePaginaResponseConTotalesDeLaBd() throws Exception {
-        when(pagoService.listar(any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(0), 45));
+        when(pagoService.listar(any(), any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(1), 45));
 
         mockMvc.perform(get("/api/pagos").param("page", "2").param("size", "20"))
                 .andExpect(status().isOk())
@@ -107,13 +107,13 @@ class PaginacionPendienteWebMvcTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void listarPagosSaneaPageNegativoYAcotaSizeAlMaximo() throws Exception {
-        when(pagoService.listar(any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(0), 0));
+        when(pagoService.listar(any(), any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(1), 0));
 
         mockMvc.perform(get("/api/pagos").param("page", "-4").param("size", "5000"))
                 .andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(pagoService).listar(captor.capture());
+        verify(pagoService).listar(isNull(), captor.capture());
         assertThat(capturarPageable(captor).getPageNumber()).isZero();
         assertThat(capturarPageable(captor).getPageSize()).isEqualTo(Paginacion.TAMANO_MAXIMO);
     }
@@ -121,12 +121,12 @@ class PaginacionPendienteWebMvcTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void listarPagosSinParametrosUsaPaginaCeroYTamanoPorDefecto() throws Exception {
-        when(pagoService.listar(any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(0), 0));
+        when(pagoService.listar(any(), any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(1), 0));
 
         mockMvc.perform(get("/api/pagos")).andExpect(status().isOk());
 
         ArgumentCaptor<Pageable> captor = ArgumentCaptor.forClass(Pageable.class);
-        verify(pagoService).listar(captor.capture());
+        verify(pagoService).listar(isNull(), captor.capture());
         assertThat(capturarPageable(captor)).isEqualTo(PageRequest.of(0, Paginacion.TAMANO_POR_DEFECTO));
     }
 
@@ -165,7 +165,7 @@ class PaginacionPendienteWebMvcTest {
     @Test
     @WithMockUser(roles = "ADMIN")
     void listarComunicadosEsPaginado() throws Exception {
-        when(comunicadoService.listar(any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(0), 3));
+        when(comunicadoService.listar(any(), any())).thenAnswer(inv -> new PageImpl<>(List.of(), inv.getArgument(1), 3));
 
         mockMvc.perform(get("/api/comunicados").param("size", "0"))
                 .andExpect(status().isOk())

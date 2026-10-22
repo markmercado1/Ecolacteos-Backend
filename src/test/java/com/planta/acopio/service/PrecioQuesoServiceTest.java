@@ -367,10 +367,20 @@ class PrecioQuesoServiceTest {
     @Test
     void listarPaginadoPropagaFamiliaIdYBusquedaAlRepositorioSinModificarlos() {
         Page<Object[]> vacia = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
-        when(presentacionRepository.buscarFilasPrecios(familiaId, "botella", PageRequest.of(0, 20))).thenReturn(vacia);
+        when(presentacionRepository.buscarFilasPrecios(familiaId, "%botella%", PageRequest.of(0, 20))).thenReturn(vacia);
 
         service.listarPaginado(familiaId, "botella", PageRequest.of(0, 20));
 
-        verify(presentacionRepository).buscarFilasPrecios(familiaId, "botella", PageRequest.of(0, 20));
+        verify(presentacionRepository).buscarFilasPrecios(familiaId, "%botella%", PageRequest.of(0, 20));
+    }
+
+    @Test
+    void listarPaginadoPliegaLaBusquedaSinAcentosNiMayusculas() {
+        Page<Object[]> vacia = new PageImpl<>(List.of(), PageRequest.of(0, 20), 0);
+        when(presentacionRepository.buscarFilasPrecios(familiaId, "%botellon%", PageRequest.of(0, 20))).thenReturn(vacia);
+
+        service.listarPaginado(familiaId, "Botellón", PageRequest.of(0, 20));
+
+        verify(presentacionRepository).buscarFilasPrecios(familiaId, "%botellon%", PageRequest.of(0, 20));
     }
 }

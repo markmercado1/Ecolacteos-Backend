@@ -60,18 +60,21 @@ public class RecepcionPlantaController {
     // el de unidad ya existente. Sin parametros, mismo resultado que antes.
     @Operation(
             summary = "Listar conciliaciones (paginado)",
-            description = "`unidadId` y `fecha` son opcionales y combinables. `page` (default 0) y `size` "
-                    + "(default 20, máx. 100) controlan la paginación real. Orden descendente por fecha."
+            description = "`unidadId`, `fecha` y `busqueda` son opcionales y combinables. `busqueda` busca en la placa de la "
+                    + "unidad o el responsable, entre TODAS las recepciones (contiene, sin distinguir mayúsculas ni acentos). "
+                    + "`page` (default 0) y `size` (default 20, máx. 100) controlan la paginación real. Orden: fecha más "
+                    + "reciente primero y, dentro del mismo día, la recepción creada más recientemente primero."
     )
     @ApiResponse(responseCode = "200", description = "Página de conciliaciones", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
     public ResponseEntity<PaginaResponse<RecepcionPlantaResponse>> listar(
             @Parameter(description = "Filtrar por unidad (opcional)") @RequestParam(required = false) UUID unidadId,
             @Parameter(description = "Filtrar por fecha exacta (opcional)") @RequestParam(required = false) LocalDate fecha,
+            @Parameter(description = "Placa o responsable (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
-        return ResponseEntity.ok(PaginaResponse.de(conciliacionService.listar(unidadId, fecha, pageable)));
+        return ResponseEntity.ok(PaginaResponse.de(conciliacionService.listar(unidadId, fecha, busqueda, pageable)));
     }
 
     @Operation(summary = "Obtener el detalle de una conciliación")

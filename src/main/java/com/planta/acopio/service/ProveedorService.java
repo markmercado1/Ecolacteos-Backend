@@ -83,7 +83,7 @@ public class ProveedorService {
     // Bloque 5 (confirmado): filtros opcionales combinables -- sin parametros
     // se comporta exactamente igual que antes (no rompe al frontend actual).
     public Page<ProveedorAdminResponse> buscar(UUID zonaId, Boolean activo, String busqueda, Pageable pageable) {
-        return proveedorRepository.buscarConFiltros(zonaId, activo, BusquedaTexto.patronLikeOTodos(busqueda), pageable)
+        return proveedorRepository.buscarConFiltros(zonaId, activo, BusquedaTexto.patronLike(busqueda), pageable)
                 .map(this::toAdminResponse);
     }
 

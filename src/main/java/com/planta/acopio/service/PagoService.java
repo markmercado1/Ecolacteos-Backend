@@ -138,8 +138,8 @@ public class PagoService {
     // Paginacion pendiente: el listado global ahora es paginado en la BD (la
     // tabla pago crece cada semana por proveedor). Solo lo consume la web.
     @Transactional(readOnly = true)
-    public Page<PagoResponse> listar(Pageable pageable) {
-        Page<Pago> pagina = pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable);
+    public Page<PagoResponse> listar(String busqueda, Pageable pageable) {
+        Page<Pago> pagina = pagoRepository.buscar(BusquedaTexto.patronLike(busqueda), pageable);
         Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagina.getContent());
         return pagina.map(p -> toResponse(p, efectivos.get(p.getId())));
     }

@@ -262,11 +262,11 @@ class ConciliacionServiceTest {
     @Test
     void listarSinFiltrosPropagaAmbosParametrosComoNull() {
         Pageable pageable = PageRequest.of(0, 20);
-        when(repository.buscarConFiltros(isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
-        service.listar(null, null, pageable);
+        service.listar(null, null, null, pageable);
 
-        verify(repository).buscarConFiltros(null, null, pageable);
+        verify(repository).buscarConFiltros(null, null, null, pageable);
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -500,5 +500,15 @@ class ConciliacionServiceTest {
         assertThat(resultado.litrosCampo()).isEqualByComparingTo(BigDecimal.ZERO);
         assertThat(resultado.registroAcopioIds()).isEmpty();
         assertThat(jornada.getEstado()).isEqualTo(EstadoJornada.RECIBIDA);
+    }
+
+    @Test
+    void listarPliegaElTextoSinAcentosNiMayusculas() {
+        Pageable pageable = PageRequest.of(0, 20);
+        when(repository.buscarConFiltros(isNull(), isNull(), eq("%nina%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+
+        service.listar(null, null, "NIÑA", pageable);
+
+        verify(repository).buscarConFiltros(null, null, "%nina%", pageable);
     }
 }

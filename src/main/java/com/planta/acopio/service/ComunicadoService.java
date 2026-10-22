@@ -77,8 +77,8 @@ public class ComunicadoService {
     // Paginacion pendiente: paginado en la BD; solo lo consume la web (la app
     // movil usa listarPorZona).
     @Transactional(readOnly = true)
-    public Page<ComunicadoResponse> listar(Pageable pageable) {
-        return comunicadoRepository.findAllByOrderByFechaDescIdDesc(pageable).map(this::toResponse);
+    public Page<ComunicadoResponse> listar(String busqueda, Pageable pageable) {
+        return comunicadoRepository.buscar(BusquedaTexto.patronLike(busqueda), pageable).map(this::toResponse);
     }
 
     // Segunda auditoria (flujos end-to-end §14-F): antes devolvia void -- el

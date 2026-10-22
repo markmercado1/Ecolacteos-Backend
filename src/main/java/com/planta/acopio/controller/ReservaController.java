@@ -49,16 +49,18 @@ public class ReservaController {
     }
 
     @Operation(summary = "Listar reservas (paginado)", description = "Filtros opcionales: `estado` (efectivo: una pendiente pasada de hora o una confirmada "
-            + "con la fecha de retiro vencida cuentan como VENCIDA), `fechaRetiro` (yyyy-MM-dd), `telefono` (cualquier formato válido) y `codigo`. Más recientes primero.")
+            + "con la fecha de retiro vencida cuentan como VENCIDA), `fechaRetiro` (yyyy-MM-dd), `telefono` (cualquier formato válido) y `codigo`. "
+            + "`busqueda` busca en el nombre del cliente, el teléfono o el código entre TODAS las reservas (contiene, sin distinguir mayúsculas ni acentos). Más recientes primero.")
     @GetMapping
     public ResponseEntity<PaginaResponse<ReservaResumenResponse>> listar(
             @Parameter(description = "PENDIENTE, CONFIRMADA, RECHAZADA, CANCELADA, VENCIDA o RETIRADA") @RequestParam(required = false) String estado,
             @Parameter(description = "Fecha de retiro (yyyy-MM-dd)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fechaRetiro,
             @Parameter(description = "Teléfono del cliente") @RequestParam(required = false) String telefono,
             @Parameter(description = "Código de seguimiento exacto (sin distinguir mayúsculas)") @RequestParam(required = false) String codigo,
+            @Parameter(description = "Cliente, teléfono o código (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(service.listar(estado, fechaRetiro, telefono, codigo, Paginacion.de(page, size)));
+        return ResponseEntity.ok(service.listar(estado, fechaRetiro, telefono, codigo, busqueda, Paginacion.de(page, size)));
     }
 
     @Operation(summary = "Detalle de una reserva", description = "Líneas, aceptación de precio, historial y si hoy ya no tiene cobertura de stock.")

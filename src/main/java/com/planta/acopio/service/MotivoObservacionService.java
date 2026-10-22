@@ -29,7 +29,7 @@ public class MotivoObservacionService {
     }
 
     public List<MotivoObservacionResponse> listarActivos() {
-        return repository.findByActivoTrue().stream()
+        return repository.findByActivoTrue(OrdenCatalogo.POR_DESCRIPCION).stream()
                 .map(m -> new MotivoObservacionResponse(m.getId(), m.getDescripcion()))
                 .toList();
     }

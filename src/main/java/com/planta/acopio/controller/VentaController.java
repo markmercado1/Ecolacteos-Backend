@@ -85,19 +85,22 @@ public class VentaController {
     // se comporta exactamente igual que antes (no rompe al frontend actual).
     @Operation(
             summary = "Listar ventas (paginado)",
-            description = "`fecha` y `tipoCliente` son opcionales y combinables. `page` (default 0) y `size` "
-                    + "(default 20, máx. 100) controlan la paginación real. Orden descendente por fecha. Cada "
-                    + "venta incluye todas sus líneas."
+            description = "`fecha`, `tipoCliente` y `busqueda` son opcionales y combinables. `busqueda` busca en el vendedor "
+                    + "o en el producto/presentación de cualquier línea, entre TODAS las ventas (contiene, sin distinguir "
+                    + "mayúsculas ni acentos). `page` (default 0) y `size` (default 20, máx. 100) controlan la paginación real. "
+                    + "Orden: fecha más reciente primero y, dentro del mismo día, la venta registrada más recientemente primero. "
+                    + "Cada venta incluye todas sus líneas."
     )
     @ApiResponse(responseCode = "200", description = "Página de ventas encontradas", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
     public ResponseEntity<PaginaResponse<VentaResumenResponse>> listar(
             @Parameter(description = "Filtrar por fecha exacta") @RequestParam(required = false) LocalDate fecha,
             @Parameter(description = "Filtrar por tipo de cliente (MAYORISTA, PROVEEDOR, PUBLICO)") @RequestParam(required = false) String tipoCliente,
+            @Parameter(description = "Vendedor, producto o presentación (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
-        return ResponseEntity.ok(PaginaResponse.de(ventaService.buscar(fecha, tipoCliente, pageable)));
+        return ResponseEntity.ok(PaginaResponse.de(ventaService.buscar(fecha, tipoCliente, busqueda, pageable)));
     }
 
     @Operation(summary = "Obtener el detalle de una venta (con todas sus líneas)")

@@ -42,7 +42,7 @@ public class InsumoService {
     }
 
     public List<InsumoResponse> listarActivos() {
-        return repository.findByActivoTrue().stream().map(this::toResponse).toList();
+        return repository.findByActivoTrue(OrdenCatalogo.POR_NOMBRE).stream().map(this::toResponse).toList();
     }
 
     public InsumoResponse obtener(UUID id) {

@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Venta;
+import com.planta.acopio.service.BusquedaTexto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -31,15 +32,27 @@ public interface VentaRepository extends JpaRepository<Venta, UUID> {
     // (si lo puede para JPQL). El ORDER BY queda fijo en la query (no se usa
     // el Sort de Pageable) para no depender de que Spring reescriba SQL
     // nativo con un ORDER BY dinamico, que es fragil.
-    @Query(value = "SELECT * FROM venta WHERE " +
-           "(CAST(:fecha AS date) IS NULL OR fecha = CAST(:fecha AS date)) AND " +
-           "(CAST(:tipoCliente AS varchar) IS NULL OR tipo_cliente = CAST(:tipoCliente AS varchar)) " +
-           "ORDER BY fecha DESC, id DESC",
-           countQuery = "SELECT count(*) FROM venta WHERE " +
-           "(CAST(:fecha AS date) IS NULL OR fecha = CAST(:fecha AS date)) AND " +
-           "(CAST(:tipoCliente AS varchar) IS NULL OR tipo_cliente = CAST(:tipoCliente AS varchar))",
+    //
+    // Busqueda de texto: nombre del vendedor, o nombre del producto o de la presentacion de cualquiera de sus lineas
+    // (sin acentos ni mayusculas), sobre TODAS las ventas del filtro, antes de paginar. Orden: fecha mas reciente
+    // primero y, dentro del mismo dia, la venta registrada mas recientemente primero (creado_en, V25); el id (UUID
+    // aleatorio) solo desempata lo que queda igual.
+    String FILTROS_VENTA =
+            "FROM venta v LEFT JOIN usuario u ON u.id = v.vendedor_id WHERE " +
+            "(CAST(:fecha AS date) IS NULL OR v.fecha = CAST(:fecha AS date)) AND " +
+            "(CAST(:tipoCliente AS varchar) IS NULL OR v.tipo_cliente = CAST(:tipoCliente AS varchar)) AND " +
+            "(" + BusquedaTexto.SIN_TERMINO + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "u.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            "EXISTS (SELECT 1 FROM venta_detalle vd JOIN presentacion pr ON pr.id = vd.presentacion_id " +
+            "JOIN producto pd ON pd.id = pr.producto_id WHERE vd.venta_id = v.id AND (" +
+            BusquedaTexto.PLEGAR_ABRE + "pd.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + "))) ";
+
+    @Query(value = "SELECT v.* " + FILTROS_VENTA + "ORDER BY v.fecha DESC, v.creado_en DESC, v.id DESC",
+           countQuery = "SELECT count(*) " + FILTROS_VENTA,
            nativeQuery = true)
-    Page<Venta> buscarConFiltros(@Param("fecha") LocalDate fecha, @Param("tipoCliente") String tipoCliente, Pageable pageable);
+    Page<Venta> buscarConFiltros(@Param("fecha") LocalDate fecha, @Param("tipoCliente") String tipoCliente,
+                                 @Param("busqueda") String busqueda, Pageable pageable);
 
     // Usado por PanelEconomicoService (RF-INN-05, KPI de margen por canal).
     // LIMITACION DOCUMENTADA (CORE_DESIGN.md): la tabla venta no tiene relacion

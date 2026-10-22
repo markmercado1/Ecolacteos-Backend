@@ -260,9 +260,10 @@ public class VentaService {
     // mismo resultado que antes (no rompe al frontend actual). Se valida que
     // tipoCliente sea un valor legal del enum antes de pasarlo a la query
     // nativa (que lo recibe como String -- ver comentario en VentaRepository).
-    public Page<VentaResumenResponse> buscar(LocalDate fecha, String tipoCliente, Pageable pageable) {
+    public Page<VentaResumenResponse> buscar(LocalDate fecha, String tipoCliente, String busqueda, Pageable pageable) {
         String tipoNormalizado = tipoCliente != null ? TipoClienteVenta.valueOf(tipoCliente).name() : null;
-        return repository.buscarConFiltros(fecha, tipoNormalizado, pageable).map(this::toResumenResponse);
+        return repository.buscarConFiltros(fecha, tipoNormalizado, BusquedaTexto.patronLike(busqueda), pageable)
+                .map(this::toResumenResponse);
     }
 
     public VentaResumenResponse obtener(UUID id) {

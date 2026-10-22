@@ -243,8 +243,9 @@ public class ConciliacionService {
     // Bloque 5 (confirmado): agrega filtro opcional por fecha, combinable con
     // el de unidad ya existente. Sin parametros, mismo resultado que antes.
     @Transactional(readOnly = true)
-    public Page<RecepcionPlantaResponse> listar(UUID unidadId, LocalDate fecha, Pageable pageable) {
-        return repository.buscarConFiltros(unidadId, fecha, pageable).map(this::toResponse);
+    public Page<RecepcionPlantaResponse> listar(UUID unidadId, LocalDate fecha, String busqueda, Pageable pageable) {
+        return repository.buscarConFiltros(unidadId, fecha, BusquedaTexto.patronLike(busqueda), pageable)
+                .map(this::toResponse);
     }
 
     @Transactional(readOnly = true)

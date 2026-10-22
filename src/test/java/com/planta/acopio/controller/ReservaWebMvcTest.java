@@ -32,6 +32,7 @@ import java.util.UUID;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -162,7 +163,7 @@ class ReservaWebMvcTest {
     @Test
     @WithMockUser(roles = {"VENTAS", "ADMIN"})
     void ventasYAdminGestionanReservas() throws Exception {
-        when(service.listar(any(), any(), any(), any(), any())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
+        when(service.listar(any(), any(), any(), any(), any(), any())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
         when(service.obtener(id)).thenReturn(detalle());
         when(service.confirmar(id)).thenReturn(detalle());
         when(service.rechazar(eq(id), any())).thenReturn(detalle());
@@ -171,7 +172,9 @@ class ReservaWebMvcTest {
         when(service.registrarAceptacionDePrecio(eq(id), any())).thenReturn(detalle());
 
         mvc.perform(get("/api/reservas?estado=PENDIENTE&fechaRetiro=2026-10-13&telefono=987654321&codigo=abcd234567")).andExpect(status().isOk());
-        verify(service).listar(eq("PENDIENTE"), eq(java.time.LocalDate.of(2026, 10, 13)), eq("987654321"), eq("abcd234567"), any());
+        verify(service).listar(eq("PENDIENTE"), eq(java.time.LocalDate.of(2026, 10, 13)), eq("987654321"), eq("abcd234567"), org.mockito.ArgumentMatchers.isNull(), any());
+        mvc.perform(get("/api/reservas?busqueda=José Muñoz")).andExpect(status().isOk());
+        verify(service).listar(isNull(), isNull(), isNull(), isNull(), eq("José Muñoz"), any());
         mvc.perform(get("/api/reservas/" + id)).andExpect(status().isOk()).andExpect(jsonPath("$.codigo").value("ABCD234567"));
         mvc.perform(put("/api/reservas/" + id + "/confirmar")).andExpect(status().isOk());
         mvc.perform(put("/api/reservas/" + id + "/recotizar")).andExpect(status().isOk());

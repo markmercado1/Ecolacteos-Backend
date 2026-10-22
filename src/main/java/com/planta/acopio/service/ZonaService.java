@@ -28,7 +28,7 @@ public class ZonaService {
     }
 
     public List<ZonaResponse> listarActivas() {
-        return zonaRepository.findByActivaTrue().stream().map(this::toResponse).toList();
+        return zonaRepository.findByActivaTrue(OrdenCatalogo.POR_NOMBRE).stream().map(this::toResponse).toList();
     }
 
     public ZonaResponse obtener(UUID id) {

@@ -39,22 +39,22 @@ class ProveedorServiceTest {
     }
 
     @Test
-    void buscarSinFiltrosPropagaNullYBusquedaComodin() {
-        when(proveedorRepository.buscarConFiltros(isNull(), isNull(), eq("%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+    void buscarSinFiltrosPropagaNullYSinBusqueda() {
+        when(proveedorRepository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
         service.buscar(null, null, null, pageable);
 
-        verify(proveedorRepository).buscarConFiltros(null, null, "%", pageable);
+        verify(proveedorRepository).buscarConFiltros(null, null, null, pageable);
     }
 
     @Test
     void buscarPorZonaYActivoLosPasaTalCualAlRepositorio() {
         UUID zonaId = UUID.randomUUID();
-        when(proveedorRepository.buscarConFiltros(eq(zonaId), eq(false), eq("%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(proveedorRepository.buscarConFiltros(eq(zonaId), eq(false), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
         service.buscar(zonaId, false, "   ", pageable);
 
-        verify(proveedorRepository).buscarConFiltros(zonaId, false, "%", pageable);
+        verify(proveedorRepository).buscarConFiltros(zonaId, false, null, pageable);
     }
 
     @Test
@@ -65,5 +65,15 @@ class ProveedorServiceTest {
         service.buscar(null, null, "  Juan_50% ", pageable);
 
         verify(proveedorRepository).buscarConFiltros(null, null, "%juan!_50!%%", pageable);
+    }
+
+    @Test
+    void buscarPliegaAcentosYMayusculas() {
+        when(proveedorRepository.buscarConFiltros(isNull(), isNull(), eq("%maria huaman%"), eq(pageable)))
+                .thenReturn(new PageImpl<>(List.of()));
+
+        service.buscar(null, null, "  María HUAMÁN ", pageable);
+
+        verify(proveedorRepository).buscarConFiltros(null, null, "%maria huaman%", pageable);
     }
 }

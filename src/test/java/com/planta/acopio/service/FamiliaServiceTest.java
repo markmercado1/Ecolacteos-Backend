@@ -64,7 +64,7 @@ class FamiliaServiceTest {
 
     @Test
     void listarActivasDevuelveSoloLasActivas() {
-        when(repository.findByActivoTrue()).thenReturn(List.of(yogurt()));
+        when(repository.findByActivoTrue(OrdenCatalogo.POR_NOMBRE)).thenReturn(List.of(yogurt()));
 
         var resultado = service.listarActivas();
 

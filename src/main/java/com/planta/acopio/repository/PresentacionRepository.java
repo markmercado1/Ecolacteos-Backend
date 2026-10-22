@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Presentacion;
+import com.planta.acopio.service.BusquedaTexto;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -49,9 +50,9 @@ public interface PresentacionRepository extends JpaRepository<Presentacion, UUID
             "  ON m.presentacion_id = pr.id " +
             "WHERE ((pr.activo = true AND p.activo = true) OR COALESCE(m.stock, 0) <> 0) " +
             "AND (CAST(:familiaId AS uuid) IS NULL OR p.familia_id = CAST(:familiaId AS uuid)) " +
-            "AND (CAST(:busqueda AS varchar) IS NULL " +
-            "     OR p.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%') " +
-            "     OR pr.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%')) " +
+            "AND (" + BusquedaTexto.SIN_TERMINO + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") " +
             "ORDER BY f.nombre, f.id, p.nombre, p.id, pr.nombre, pr.id",
             countQuery = "SELECT count(*) " +
             "FROM presentacion pr " +
@@ -61,9 +62,9 @@ public interface PresentacionRepository extends JpaRepository<Presentacion, UUID
             "  ON m.presentacion_id = pr.id " +
             "WHERE ((pr.activo = true AND p.activo = true) OR COALESCE(m.stock, 0) <> 0) " +
             "AND (CAST(:familiaId AS uuid) IS NULL OR p.familia_id = CAST(:familiaId AS uuid)) " +
-            "AND (CAST(:busqueda AS varchar) IS NULL " +
-            "     OR p.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%') " +
-            "     OR pr.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%'))",
+            "AND (" + BusquedaTexto.SIN_TERMINO + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ")",
             nativeQuery = true)
     Page<Object[]> buscarFilasStock(@Param("familiaId") UUID familiaId, @Param("busqueda") String busqueda, Pageable pageable);
 
@@ -85,9 +86,9 @@ public interface PresentacionRepository extends JpaRepository<Presentacion, UUID
             "LEFT JOIN presentacion pr ON pr.producto_id = p.id AND pr.activo = true " +
             "WHERE p.activo = true " +
             "AND (CAST(:familiaId AS uuid) IS NULL OR p.familia_id = CAST(:familiaId AS uuid)) " +
-            "AND (CAST(:busqueda AS varchar) IS NULL " +
-            "     OR p.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%') " +
-            "     OR pr.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%')) " +
+            "AND (" + BusquedaTexto.SIN_TERMINO + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") " +
             "ORDER BY f.nombre, f.id, p.nombre, p.id, pr.nombre NULLS FIRST, pr.id",
             countQuery = "SELECT count(*) " +
             "FROM producto p " +
@@ -95,9 +96,9 @@ public interface PresentacionRepository extends JpaRepository<Presentacion, UUID
             "LEFT JOIN presentacion pr ON pr.producto_id = p.id AND pr.activo = true " +
             "WHERE p.activo = true " +
             "AND (CAST(:familiaId AS uuid) IS NULL OR p.familia_id = CAST(:familiaId AS uuid)) " +
-            "AND (CAST(:busqueda AS varchar) IS NULL " +
-            "     OR p.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%') " +
-            "     OR pr.nombre ILIKE CONCAT('%', CAST(:busqueda AS varchar), '%'))",
+            "AND (" + BusquedaTexto.SIN_TERMINO + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ")",
             nativeQuery = true)
     Page<Object[]> buscarFilasPrecios(@Param("familiaId") UUID familiaId, @Param("busqueda") String busqueda, Pageable pageable);
 

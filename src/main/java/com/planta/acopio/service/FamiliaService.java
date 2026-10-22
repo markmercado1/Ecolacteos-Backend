@@ -32,7 +32,7 @@ public class FamiliaService {
     }
 
     public List<FamiliaResponse> listarActivas() {
-        return repository.findByActivoTrue().stream().map(this::toResponse).toList();
+        return repository.findByActivoTrue(OrdenCatalogo.POR_NOMBRE).stream().map(this::toResponse).toList();
     }
 
     /** Incluye inactivas: sus productos pueden conservar saldo en inventario. */

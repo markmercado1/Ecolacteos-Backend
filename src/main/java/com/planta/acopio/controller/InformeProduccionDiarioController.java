@@ -76,17 +76,19 @@ public class InformeProduccionDiarioController {
     @Operation(
             summary = "Listar informes de producción (paginado)",
             description = "`desde`/`hasta` son opcionales y combinables (filtran por rango de fecha, ambos "
-                    + "inclusive). `page` (default 0) y `size` (default 20, máx. 100) controlan la paginación."
+                    + "inclusive). `busqueda` busca en el nombre del responsable entre TODOS los informes (contiene, sin "
+                    + "distinguir mayúsculas ni acentos). `page` (default 0) y `size` (default 20, máx. 100) controlan la paginación."
     )
     @ApiResponse(responseCode = "200", description = "Página de informes encontrados", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
     public ResponseEntity<PaginaResponse<InformeProduccionDiarioResponse>> listar(
             @Parameter(description = "Filtrar desde esta fecha (inclusive)") @RequestParam(required = false) LocalDate desde,
             @Parameter(description = "Filtrar hasta esta fecha (inclusive)") @RequestParam(required = false) LocalDate hasta,
+            @Parameter(description = "Responsable (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
         Pageable pageable = PageRequest.of(Math.max(page, 0), Math.min(Math.max(size, 1), 100));
-        return ResponseEntity.ok(PaginaResponse.de(service.buscar(desde, hasta, pageable)));
+        return ResponseEntity.ok(PaginaResponse.de(service.buscar(desde, hasta, busqueda, pageable)));
     }
 
     @Operation(summary = "Obtener el detalle de un informe")

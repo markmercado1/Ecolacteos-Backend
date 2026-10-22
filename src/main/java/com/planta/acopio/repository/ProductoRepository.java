@@ -10,6 +10,7 @@ import java.util.UUID;
 
 public interface ProductoRepository extends JpaRepository<Producto, UUID> {
     List<Producto> findByActivoTrue();
+    List<Producto> findByActivoTrue(org.springframework.data.domain.Sort sort);
 
     // Duplicados: incluye productos desactivados (siguen ocupando el nombre por el UNIQUE de la BD).
     boolean existsByNombreIgnoreCase(String nombre);

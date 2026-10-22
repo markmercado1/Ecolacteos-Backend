@@ -407,7 +407,7 @@ public class InventarioService {
     // (la misma regla de cobertura que aplica la venta; el panel solo lo muestra).
     @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
     public PaginaResponse<FilaStockResponse> listarStockPaginado(UUID familiaId, String busqueda, Pageable pageable) {
-        Page<Object[]> filas = presentacionRepository.buscarFilasStock(familiaId, busqueda, pageable);
+        Page<Object[]> filas = presentacionRepository.buscarFilasStock(familiaId, BusquedaTexto.patronLike(busqueda), pageable);
         return PaginaResponse.de(filas.map(fila -> {
             UUID presentacionId = (UUID) fila[5];
             int stock = ((Number) fila[9]).intValue();

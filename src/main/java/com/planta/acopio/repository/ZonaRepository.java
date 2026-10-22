@@ -7,4 +7,5 @@ import java.util.UUID;
 
 public interface ZonaRepository extends JpaRepository<Zona, UUID> {
     List<Zona> findByActivaTrue();
+    List<Zona> findByActivaTrue(org.springframework.data.domain.Sort sort);
 }

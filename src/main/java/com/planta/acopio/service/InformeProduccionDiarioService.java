@@ -140,8 +140,8 @@ public class InformeProduccionDiarioService {
     }
 
     @Transactional(readOnly = true)
-    public Page<InformeProduccionDiarioResponse> buscar(LocalDate desde, LocalDate hasta, Pageable pageable) {
-        return repository.buscarConFiltros(desde, hasta, pageable).map(this::toResponse);
+    public Page<InformeProduccionDiarioResponse> buscar(LocalDate desde, LocalDate hasta, String busqueda, Pageable pageable) {
+        return repository.buscarConFiltros(desde, hasta, BusquedaTexto.patronLike(busqueda), pageable).map(this::toResponse);
     }
 
     // Solo para crear(): el informe es nuevo, su coleccion de insumos arranca vacia -- no hay nada que

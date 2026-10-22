@@ -73,14 +73,17 @@ public class PagoController {
     // Auditoria de bajo riesgo (Fase 1): listado global -- antes solo se podia
     // ver el historial por proveedor, uno a la vez.
     @Operation(summary = "Listar todos los pagos (paginado)", description = "Rol requerido: ADMIN o RECEPCION. "
-            + "Orden descendente por semanaInicio (desempate por id). page empieza en 0; size se acota a 1..100.")
+            + "Orden: semana más reciente primero y, dentro de la misma semana, el pago creado más recientemente primero. "
+            + "`busqueda` (opcional) busca en el nombre o el DNI del proveedor entre TODOS los pagos (contiene, sin distinguir "
+            + "mayúsculas ni acentos). page empieza en 0; size se acota a 1..100.")
     @ApiResponse(responseCode = "200", description = "Página de pagos", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<PaginaResponse<PagoResponse>> listar(
+            @Parameter(description = "Nombre o DNI del proveedor (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
-        return ResponseEntity.ok(PaginaResponse.de(pagoService.listar(Paginacion.de(page, size))));
+        return ResponseEntity.ok(PaginaResponse.de(pagoService.listar(busqueda, Paginacion.de(page, size))));
     }
 
     // Contrato de la app movil (R-04): lista completa, sin paginar. No cambiar

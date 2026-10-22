@@ -807,11 +807,11 @@ class LoteProduccionServiceTest {
 
     @Test
     void buscarSinFiltrosPropagaAmbosParametrosComoNull() {
-        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
-        service.buscar(null, null, null, pageable);
+        service.buscar(null, null, null, null, pageable);
 
-        verify(repository).buscarConFiltros(null, null, null, pageable);
+        verify(repository).buscarConFiltros(null, null, null, null, pageable);
     }
 
     // Fase 1 (control de vencimiento): el registro de un solo paso (camino compartido) no registra fechas de
@@ -832,5 +832,14 @@ class LoteProduccionServiceTest {
         verify(recepcionPlantaRepository, never()).buscarConSaldoDisponibleOrdenadasPorAntiguedad();
         verify(repository, never()).saveAndFlush(any());
         verify(inventarioService, never()).registrarEntradaProduccion(any());
+    }
+
+    @Test
+    void buscarPliegaElTextoSinAcentosNiMayusculas() {
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq("%pain%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+
+        service.buscar(null, null, null, "  Paín ", pageable);
+
+        verify(repository).buscarConFiltros(null, null, null, "%pain%", pageable);
     }
 }

@@ -221,7 +221,8 @@ public class ReservaService {
     // ================================================================== personal: consulta
 
     @Transactional(readOnly = true)
-    public PaginaResponse<ReservaResumenResponse> listar(String estado, LocalDate fechaRetiro, String telefono, String codigo, Pageable pageable) {
+    public PaginaResponse<ReservaResumenResponse> listar(String estado, LocalDate fechaRetiro, String telefono, String codigo,
+                                                         String busqueda, Pageable pageable) {
         String estadoNormalizado = null;
         if (estado != null && !estado.isBlank()) {
             try {
@@ -237,7 +238,8 @@ public class ReservaService {
         String codigoNormalizado = (codigo == null || codigo.isBlank()) ? null : codigo.trim().toUpperCase();
         LocalDateTime ahora = regla.ahora();
         LocalDate hoy = ahora.toLocalDate();
-        var pagina = reservaRepository.buscar(estadoNormalizado, fechaRetiro, telefonoNormalizado, codigoNormalizado, ahora, hoy, pageable);
+        var pagina = reservaRepository.buscar(estadoNormalizado, fechaRetiro, telefonoNormalizado, codigoNormalizado,
+                BusquedaTexto.patronLike(busqueda), ahora, hoy, pageable);
         Map<UUID, List<ReservaDetalle>> lineas = new HashMap<>();
         if (!pagina.isEmpty()) {
             for (ReservaDetalle d : detalleRepository.findByReservaIdIn(pagina.getContent().stream().map(Reserva::getId).toList())) {

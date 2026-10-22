@@ -54,7 +54,7 @@ public class UnidadService {
     }
 
     public List<UnidadResponse> listar() {
-        return unidadRepository.findAll().stream().map(this::toResponse).toList();
+        return unidadRepository.findAll(OrdenCatalogo.POR_PLACA).stream().map(this::toResponse).toList();
     }
 
     // Auditoria CRUD (prioridad MEDIA): faltaba poder reasignar zona/responsable

@@ -1,6 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.LoteProduccion;
+import com.planta.acopio.service.BusquedaTexto;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
@@ -31,18 +32,24 @@ public interface LoteProduccionRepository extends JpaRepository<LoteProduccion, 
     // Paginacion real (confirmado): countQuery explicito para query nativa.
     // V18 (recetas): filtro opcional por estado, aditivo (null = todos, mismo resultado que antes).
     // creado_en DESC como desempate estable dentro de la misma fecha.
-    @Query(value = "SELECT * FROM lote_produccion WHERE " +
-           "(CAST(:fecha AS date) IS NULL OR fecha = CAST(:fecha AS date)) AND " +
-           "(CAST(:productoId AS uuid) IS NULL OR producto_id = CAST(:productoId AS uuid)) AND " +
-           "(CAST(:estado AS varchar) IS NULL OR estado = CAST(:estado AS varchar)) " +
-           "ORDER BY fecha DESC, creado_en DESC, id DESC",
-           countQuery = "SELECT count(*) FROM lote_produccion WHERE " +
-           "(CAST(:fecha AS date) IS NULL OR fecha = CAST(:fecha AS date)) AND " +
-           "(CAST(:productoId AS uuid) IS NULL OR producto_id = CAST(:productoId AS uuid)) AND " +
-           "(CAST(:estado AS varchar) IS NULL OR estado = CAST(:estado AS varchar))",
+    // Busqueda de texto: nombre del producto o del responsable (sin acentos ni mayusculas), sobre TODOS los lotes del
+    // filtro, antes de paginar. LEFT JOIN: un lote sin producto o sin responsable no desaparece del listado.
+    String FILTROS_LOTE =
+            "FROM lote_produccion l LEFT JOIN producto pd ON pd.id = l.producto_id " +
+            "LEFT JOIN usuario u ON u.id = l.responsable_id WHERE " +
+            "(CAST(:fecha AS date) IS NULL OR l.fecha = CAST(:fecha AS date)) AND " +
+            "(CAST(:productoId AS uuid) IS NULL OR l.producto_id = CAST(:productoId AS uuid)) AND " +
+            "(CAST(:estado AS varchar) IS NULL OR l.estado = CAST(:estado AS varchar)) AND " +
+            "(" + BusquedaTexto.SIN_TERMINO + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "pd.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "u.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
+
+    @Query(value = "SELECT l.* " + FILTROS_LOTE + "ORDER BY l.fecha DESC, l.creado_en DESC, l.id DESC",
+           countQuery = "SELECT count(*) " + FILTROS_LOTE,
            nativeQuery = true)
     Page<LoteProduccion> buscarConFiltros(@Param("fecha") LocalDate fecha, @Param("productoId") UUID productoId,
-                                          @Param("estado") String estado, Pageable pageable);
+                                          @Param("estado") String estado, @Param("busqueda") String busqueda,
+                                          Pageable pageable);
 
     // V18 (recetas): bloqueo pesimista del lote para sus transiciones de estado (iniciar/finalizar/cancelar)
     // -- dos peticiones simultaneas sobre el MISMO lote se serializan aqui, y la segunda ve el estado ya

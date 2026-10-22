@@ -164,7 +164,7 @@ class PagoServiceTest {
         Pago ajustado = pagoGuardado(new BigDecimal("100"), new BigDecimal("1.000"));
         Pago normal = pagoGuardado(new BigDecimal("50"), new BigDecimal("1.000"));
         var pageable = org.springframework.data.domain.PageRequest.of(0, 10);
-        when(pagoRepository.findAllByOrderBySemanaInicioDescIdDesc(pageable))
+        when(pagoRepository.buscar(null, pageable))
                 .thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(ajustado, normal), pageable, 2));
         AjustePrecioPago primero = new AjustePrecioPago();
         primero.setPago(ajustado);
@@ -174,7 +174,7 @@ class PagoServiceTest {
         segundo.setPrecioLitroNuevo(new BigDecimal("1.500"));
         when(ajustePrecioRepository.findByPagoIdInOrderByCreadoEnAscIdAsc(any())).thenReturn(List.of(primero, segundo));
 
-        var pagina = service.listar(pageable);
+        var pagina = service.listar(null, pageable);
 
         assertThat(pagina.getContent().get(0).totalAPagar()).isEqualByComparingTo("150.00"); // 100 L x 1.50
         assertThat(pagina.getContent().get(1).totalAPagar()).isEqualByComparingTo("50.00");  // sin ajuste: sigue a 1.00
@@ -206,5 +206,16 @@ class PagoServiceTest {
         r.setLitros(litros);
         r.setFechaHora(LocalDateTime.now());
         return r;
+    }
+
+    // La búsqueda se pliega (sin acentos ni mayúsculas) antes de llegar a la BD: lo que se compara en SQL es el mismo texto.
+    @Test
+    void listarPliegaLaBusquedaSinAcentosNiMayusculasAntesDeConsultar() {
+        var pageable = org.springframework.data.domain.PageRequest.of(0, 20);
+        when(pagoRepository.buscar("%huaman%", pageable)).thenReturn(new org.springframework.data.domain.PageImpl<>(List.of(), pageable, 0));
+
+        service.listar("  HUAMÁN ", pageable);
+
+        verify(pagoRepository).buscar("%huaman%", pageable);
     }
 }

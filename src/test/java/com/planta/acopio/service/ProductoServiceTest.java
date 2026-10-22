@@ -115,7 +115,7 @@ class ProductoServiceTest {
         queso.setFamilia(familia(familiaQuesoId, "Queso"));
         queso.setActivo(true);
         queso.setCicloCapital(CicloCapital.RAPIDO);
-        when(repository.findByActivoTrue()).thenReturn(List.of(queso));
+        when(repository.findByActivoTrue(OrdenCatalogo.POR_NOMBRE)).thenReturn(List.of(queso));
         when(presentacionRepository.findByProductoIdOrderByNombre(queso.getId())).thenReturn(List.of());
 
         var resultado = service.listarActivos();
@@ -264,7 +264,7 @@ class ProductoServiceTest {
         pr.setNombre("Pieza");
         pr.setUnidadConteo("pieza");
         pr.setFotoArchivo("pres.jpg");
-        when(repository.findByActivoTrue()).thenReturn(List.of(p));
+        when(repository.findByActivoTrue(OrdenCatalogo.POR_NOMBRE)).thenReturn(List.of(p));
         when(presentacionRepository.findByProductoIdOrderByNombre(id)).thenReturn(List.of(pr));
 
         var resultado = service.listarActivos().get(0);

@@ -460,10 +460,19 @@ class InformeProduccionDiarioServiceTest {
 
     @Test
     void buscarSinFiltrosPropagaAmbosParametrosComoNull() {
-        when(repository.buscarConFiltros(isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
-        service.buscar(null, null, pageable);
+        service.buscar(null, null, null, pageable);
 
-        verify(repository).buscarConFiltros(null, null, pageable);
+        verify(repository).buscarConFiltros(null, null, null, pageable);
+    }
+
+    @Test
+    void buscarPliegaElTextoSinAcentosNiMayusculas() {
+        when(repository.buscarConFiltros(isNull(), isNull(), eq("%jose%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+
+        service.buscar(null, null, "JOSÉ", pageable);
+
+        verify(repository).buscarConFiltros(null, null, "%jose%", pageable);
     }
 }

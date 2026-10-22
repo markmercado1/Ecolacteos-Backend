@@ -1,0 +1,12 @@
+-- Orden "mas reciente primero" en el historial de ventas. Migracion SOLO ADITIVA: una columna con valor por defecto.
+--
+-- `venta` solo guardaba la fecha (DATE) y el listado se desempataba por `id`, que es un UUID aleatorio: dentro del mismo
+-- dia una venta recien registrada podia salir en cualquier posicion. `creado_en` permite ordenar por fecha y, dentro de
+-- la misma fecha, por el momento real del registro.
+--
+-- clock_timestamp() (y no now()): now() vale lo mismo para todo lo que se inserta en una misma transaccion (el sync de
+-- la app movil registra varias ventas juntas); clock_timestamp() da la hora real de cada INSERT. Las ventas que ya
+-- existian reciben su valor al reescribirse la tabla, en orden fisico (que en la practica es el de insercion): es una
+-- aproximacion para el historico, no la hora real de aquellas ventas. Las nuevas llevan su hora real.
+-- La entidad Venta no mapea la columna a proposito: el INSERT no la menciona y la BD la rellena.
+ALTER TABLE venta ADD COLUMN creado_en TIMESTAMP NOT NULL DEFAULT clock_timestamp();
