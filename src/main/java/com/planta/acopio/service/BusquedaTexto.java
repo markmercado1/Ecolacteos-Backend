@@ -35,7 +35,7 @@ public final class BusquedaTexto {
     }
 
     /** Minusculas y sin acentos, con la misma tabla de letras que usa la BD (ver PLEGAR_CIERRA). */
-    static String plegar(String texto) {
+    public static String plegar(String texto) {
         String nfc = Normalizer.normalize(texto, Normalizer.Form.NFC);
         StringBuilder sb = new StringBuilder(nfc.length());
         for (int i = 0; i < nfc.length(); i++) {
