@@ -229,6 +229,21 @@ correcciones posteriores.
   Swagger (`timestamp`, `status`, `error`, `mensaje`). Un solo interceptor
   HTTP en el frontend puede manejarlos todos.
 
+## 8. Exportar e importar Excel
+
+Detalle completo en el repositorio del panel: `docs/EXCEL.md`.
+
+**Exportar (solo lectura).** `GET /api/exportaciones/{recurso}` devuelve un `.xlsx` con TODAS las filas del filtro y la búsqueda (no una página), con los
+mismos roles y filtros que el listado de cada tabla. Recursos: `proveedores`, `acopios`, `pagos`, `ventas`, `reservas`, `recepciones`, `lotes`,
+`informes-produccion`, `stock`, `inventario-insumos`, `calidad-analizados`, `alertas-anomalia`, `jornadas`, `usuarios`, `precios-litro`,
+`precios-presentacion`, `zonas`, `motivos-observacion`, `familias`, `productos`, `insumos`, `recetas`, `configuracion`, `unidades`. Tope de filas:
+`app.excel.exportacion.max-filas` (50 000; 400 si se excede). Las celdas de texto que parezcan fórmula (`=`, `+`, `-`, `@`) se neutralizan.
+
+**Importar (solo ADMIN; solo datos maestros).** Flujo en dos pasos bajo `/api/admin/importaciones`: `GET /{tipo}/plantilla` (`proveedores`, `insumos`),
+`POST /{tipo}/previsualizar` (multipart `archivo`; no crea nada), `POST /{id}/confirmar` (una transacción, idempotente), `GET /{id}/reporte` y
+`DELETE /{id}`. Solo crea: un DNI/nombre repetido se omite y se reporta. Proveedores se crean con `ProveedorService.crear` (QR, historial de zona,
+sincronización móvil) e insumos con `InsumoService.crear` (SALDO_INICIAL en el kardex). Migración `V26__importacion_excel.sql`.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*
