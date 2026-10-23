@@ -1,5 +1,7 @@
 package com.planta.acopio.controller;
 
+import com.planta.acopio.dto.AjusteCalidadEntregaRequest;
+import com.planta.acopio.dto.AjusteCalidadEntregaResponse;
 import com.planta.acopio.dto.AjustePagoResponse;
 import com.planta.acopio.dto.AjustePrecioPagoRequest;
 import com.planta.acopio.dto.AjustePrecioPagoResponse;
@@ -7,6 +9,7 @@ import com.planta.acopio.dto.GenerarPagoRequest;
 import com.planta.acopio.dto.LineaPagoResponse;
 import com.planta.acopio.dto.PaginaResponse;
 import com.planta.acopio.dto.PagoResponse;
+import com.planta.acopio.service.AjusteCalidadEntregaService;
 import com.planta.acopio.service.AjustePagoService;
 import com.planta.acopio.service.AjustePrecioPagoService;
 import com.planta.acopio.service.BoletaPagoService;
@@ -44,15 +47,17 @@ public class PagoController {
     private final AjustePrecioPagoService ajustePrecioPagoService;
     private final BoletaPagoService boletaPagoService;
     private final LineaPagoService lineaPagoService;
+    private final AjusteCalidadEntregaService ajusteCalidadEntregaService;
 
     public PagoController(PagoService pagoService, AjustePagoService ajustePagoService,
                           AjustePrecioPagoService ajustePrecioPagoService, BoletaPagoService boletaPagoService,
-                          LineaPagoService lineaPagoService) {
+                          LineaPagoService lineaPagoService, AjusteCalidadEntregaService ajusteCalidadEntregaService) {
         this.pagoService = pagoService;
         this.ajustePagoService = ajustePagoService;
         this.ajustePrecioPagoService = ajustePrecioPagoService;
         this.boletaPagoService = boletaPagoService;
         this.lineaPagoService = lineaPagoService;
+        this.ajusteCalidadEntregaService = ajusteCalidadEntregaService;
     }
 
     @Operation(
@@ -165,6 +170,38 @@ public class PagoController {
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<List<LineaPagoResponse>> lineasDePago(@Parameter(description = "Id del pago") @PathVariable UUID id) {
         return ResponseEntity.ok(lineaPagoService.listarPorPago(id));
+    }
+
+    // Fase C: precio de calidad de UNA entrega de un pago (a mano, con analisis y motivo). Solo ADMIN, como el ajuste de precio del pago.
+    @Operation(summary = "Aplicar un precio de calidad a una entrega de un pago", description = "Rol requerido: ADMIN. Fija el precio por litro "
+            + "de UNA entrega ya liquidada en este pago (p. ej. 100 L de calidad deficiente a 0.90 dentro de un pago de 600 L a 1.00). Exige el "
+            + "análisis de calidad que lo sustenta (debe ser de esa misma entrega) y un motivo. Afecta solo a esa entrega y manda sobre el ajuste "
+            + "de precio del pago completo. El total reconocido del pago suma litros × precio de cada entrega y se redondea una sola vez. El pago "
+            + "original no se modifica: queda un registro con precio anterior, nuevo, análisis, motivo, usuario y fecha. No hay regla automática.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Precio de calidad registrado", content = @Content(schema = @Schema(implementation = AjusteCalidadEntregaResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Precio inválido o igual al actual, motivo vacío, o el análisis no corresponde a la entrega"),
+            @ApiResponse(responseCode = "404", description = "No existe el pago, la entrega no está liquidada en ese pago, o no existe el análisis")
+    })
+    @PostMapping("/{id}/lineas/{registroAcopioId}/ajuste-calidad")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<AjusteCalidadEntregaResponse> ajusteDeCalidad(
+            @Parameter(description = "Id del pago") @PathVariable UUID id,
+            @Parameter(description = "Id de la entrega (registro de acopio) liquidada en ese pago") @PathVariable UUID registroAcopioId,
+            @RequestBody @Valid AjusteCalidadEntregaRequest dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(ajusteCalidadEntregaService.crear(id, registroAcopioId, dto));
+    }
+
+    @Operation(summary = "Historial de precios de calidad de un pago", description = "Rol requerido: ADMIN, RECEPCION o CALIDAD. Del más reciente al más antiguo; "
+            + "cada uno con su análisis de calidad, motivo, usuario y fecha. Sin datos personales del proveedor.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Precios de calidad del pago", content = @Content(array = @ArraySchema(schema = @Schema(implementation = AjusteCalidadEntregaResponse.class)))),
+            @ApiResponse(responseCode = "404", description = "No existe un pago con ese id")
+    })
+    @GetMapping("/{id}/ajustes-calidad")
+    @PreAuthorize("hasAnyRole('ADMIN','RECEPCION','CALIDAD')")
+    public ResponseEntity<List<AjusteCalidadEntregaResponse>> ajustesDeCalidad(@Parameter(description = "Id del pago") @PathVariable UUID id) {
+        return ResponseEntity.ok(ajusteCalidadEntregaService.listarPorPago(id));
     }
 
     // Ajuste del precio por litro de UN pago (V24). El pago original no se modifica; el cambio queda en el historial

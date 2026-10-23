@@ -4,6 +4,7 @@ import com.planta.acopio.dto.AjustePagoResponse;
 import com.planta.acopio.entity.AjustePago;
 import com.planta.acopio.entity.CorreccionRegistro;
 import com.planta.acopio.entity.EstadoAjustePago;
+import com.planta.acopio.entity.LineaPago;
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
@@ -16,8 +17,10 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.util.Collection;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.UUID;
 
 // Fase 3, decision de negocio 1 (opcion C, confirmada): Pago y RegistroAcopio
@@ -28,6 +31,8 @@ import java.util.UUID;
 // Fase B: el ajuste ya no parte del "ultimo valor corregido" deducido de otro ajuste, sino de los litros CONTABILIZADOS de la
 // entrega (los que se liquidaron + lo que ya sumaron sus ajustes), y se valora al precio efectivamente aplicado, incluidos los
 // ajustes de calidad del pago (PrecioAplicado). Mientras esta PENDIENTE el precio sigue al del pago; al liquidarlo se congela.
+//
+// Fase C: el precio es el de LA ENTREGA (su ajuste de calidad propio si lo tiene; si no, el del pago), no solo el del pago.
 @Service
 public class AjustePagoService {
 
@@ -55,7 +60,8 @@ public class AjustePagoService {
             return;
         }
 
-        BigDecimal contabilizados = litrosContabilizados(registro);
+        Optional<LineaPago> linea = lineaPagoRepository.findByRegistroAcopioId(registro.getId());
+        BigDecimal contabilizados = litrosContabilizados(registro, linea);
         BigDecimal diferencia = correccion.getLitrosCorregido().subtract(contabilizados);
         if (diferencia.signum() == 0) {
             return; // ya estaba contabilizado: nada que ajustar
@@ -67,28 +73,30 @@ public class AjustePagoService {
         ajuste.setCorreccionRegistro(correccion);
         ajuste.setLitrosContabilizadosAntes(contabilizados);
         ajuste.setLitrosDiferencia(diferencia);
-        // Precio efectivamente aplicado a la entrega AHORA (incluye ajustes de calidad del pago), no el original del pago.
-        ajuste.setPrecioLitro(precioAplicado.efectivoDelPago(pago));
+        // Precio efectivamente aplicado a la entrega AHORA (su ajuste de calidad o, si no tiene, el del pago con sus ajustes).
+        ajuste.setPrecioLitro(precioDeLaEntrega(pago, linea));
         repository.save(ajuste);
     }
 
     // Litros que el pago ya tiene en cuenta para esta entrega: los liquidados mas la suma de sus ajustes. Pagos anteriores a V28
     // sin linea no existen tras la migracion; el respaldo conserva el criterio anterior por si faltara alguna.
-    private BigDecimal litrosContabilizados(RegistroAcopio registro) {
-        return lineaPagoRepository.findByRegistroAcopioId(registro.getId())
-                .map(linea -> linea.getLitrosLiquidados().add(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())))
+    private BigDecimal litrosContabilizados(RegistroAcopio registro, Optional<LineaPago> linea) {
+        return linea
+                .map(l -> l.getLitrosLiquidados().add(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())))
                 .orElseGet(() -> repository.findFirstByRegistroAcopio_IdOrderByCreadoEnDesc(registro.getId())
                         .map(ultimo -> ultimo.getCorreccionRegistro().getLitrosCorregido())
                         .orElse(registro.getLitros()));
     }
 
+    private BigDecimal precioDeLaEntrega(Pago pago, Optional<LineaPago> linea) {
+        return linea.map(precioAplicado::deLinea).orElseGet(() -> precioAplicado.efectivoDelPago(pago));
+    }
+
     @Transactional(readOnly = true)
     public List<AjustePagoResponse> listarPorPago(UUID pagoId) {
-        Pago pago = pagoRepository.findById(pagoId)
+        pagoRepository.findById(pagoId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pago no encontrado: " + pagoId));
-        Map<UUID, BigDecimal> precios = precioAplicado.efectivosDePagos(List.of(pago));
-        return repository.findByPagoIdOrderByCreadoEnDesc(pagoId).stream()
-                .map(a -> toResponse(a, precios.get(pagoId))).toList();
+        return responder(repository.findByPagoIdOrderByCreadoEnDesc(pagoId));
     }
 
     @Transactional(readOnly = true)
@@ -108,15 +116,32 @@ public class AjustePagoService {
         if (ajuste.getEstado() == EstadoAjustePago.LIQUIDADO) {
             throw new ValidacionNegocioException("El ajuste " + id + " ya estaba liquidado");
         }
-        BigDecimal precio = precioAplicado.efectivoDelPago(ajuste.getPago());
+        BigDecimal precio = precioDeLaEntrega(ajuste.getPago(),
+                lineaPagoRepository.findByRegistroAcopioId(ajuste.getRegistroAcopio().getId()));
         ajuste.setPrecioLitroLiquidado(precio);
         ajuste.setEstado(EstadoAjustePago.LIQUIDADO);
         return toResponse(ajuste, precio);
     }
 
+    // Precio vigente de cada ajuste: el de SU entrega (ajuste de calidad propio o el del pago). Con dos consultas para todos; si la entrega
+    // no tiene linea (no deberia ocurrir tras V28) se usa el precio efectivo de su pago.
     private List<AjustePagoResponse> responder(Collection<AjustePago> ajustes) {
-        Map<UUID, BigDecimal> precios = precioAplicado.efectivosDePagos(ajustes.stream().map(AjustePago::getPago).toList());
-        return ajustes.stream().map(a -> toResponse(a, precios.get(a.getPago().getId()))).toList();
+        if (ajustes.isEmpty()) {
+            return List.of();
+        }
+        Map<UUID, BigDecimal> delPago = precioAplicado.efectivosDePagos(ajustes.stream().map(AjustePago::getPago).toList());
+        Map<UUID, BigDecimal> porRegistro = new HashMap<>();
+        List<LineaPago> lineas = lineaPagoRepository.findByRegistroAcopioIdIn(
+                ajustes.stream().map(a -> a.getRegistroAcopio().getId()).distinct().toList());
+        if (!lineas.isEmpty()) {
+            Map<UUID, BigDecimal> porLinea = precioAplicado.deLineas(lineas);
+            for (LineaPago l : lineas) {
+                porRegistro.put(l.getRegistroAcopio().getId(), porLinea.get(l.getId()));
+            }
+        }
+        return ajustes.stream()
+                .map(a -> toResponse(a, porRegistro.getOrDefault(a.getRegistroAcopio().getId(), delPago.get(a.getPago().getId()))))
+                .toList();
     }
 
     // precioDelPago = precio efectivo actual del pago. PENDIENTE se valora a ese precio; LIQUIDADO, al que se congelo.

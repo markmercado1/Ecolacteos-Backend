@@ -5,6 +5,7 @@ import com.planta.acopio.config.JwtService;
 import com.planta.acopio.config.SecurityConfig;
 import com.planta.acopio.config.UsuarioDetailsService;
 import com.planta.acopio.dto.AjustePrecioPagoResponse;
+import com.planta.acopio.service.AjusteCalidadEntregaService;
 import com.planta.acopio.service.AjustePagoService;
 import com.planta.acopio.service.AjustePrecioPagoService;
 import com.planta.acopio.service.BoletaPagoService;
@@ -45,6 +46,7 @@ class AjustePrecioPagoAuthorizationWebMvcTest {
     @MockBean private AjustePrecioPagoService ajustePrecioPagoService;
     @MockBean private BoletaPagoService boletaPagoService;
     @MockBean private LineaPagoService lineaPagoService;
+    @MockBean private AjusteCalidadEntregaService ajusteCalidadEntregaService;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 

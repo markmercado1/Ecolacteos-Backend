@@ -20,5 +20,8 @@ public record PagoResponse(
     Boolean comprobanteGenerado,
     List<UUID> registroAcopioIds,   // mejora #4: trazabilidad exacta
     BigDecimal precioLitroEfectivo,
-    BigDecimal totalAPagar
+    // Fase C: totalAPagar es el total RECONOCIDO (suma de litros liquidados x precio aplicado de cada entrega, redondeado una sola vez).
+    BigDecimal totalAPagar,
+    // Fase C: lo que suman los precios de calidad propios de algunas entregas respecto del precio del pago (0 si ninguna lo tiene).
+    BigDecimal ajusteCalidad
 ) {}

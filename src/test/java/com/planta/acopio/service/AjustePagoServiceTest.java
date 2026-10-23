@@ -46,6 +46,7 @@ class AjustePagoServiceTest {
     @Mock private PrecioAplicado precioAplicado;
 
     private AjustePagoService service;
+    private final java.util.Map<UUID, LineaPago> lineaDe = new java.util.HashMap<>();
 
     @BeforeEach
     void setUp() {
@@ -70,7 +71,7 @@ class AjustePagoServiceTest {
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
         liquidada(registro, pago, 40, 40);
         when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
-        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.valueOf(1.8));
+        when(precioAplicado.deLinea(lineaDe.get(registro.getId()))).thenReturn(BigDecimal.valueOf(1.8));
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)));
@@ -93,7 +94,7 @@ class AjustePagoServiceTest {
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
         liquidada(registro, pago, 100, 90);
         when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
-        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.ONE);
+        when(precioAplicado.deLinea(lineaDe.get(registro.getId()))).thenReturn(BigDecimal.ONE);
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(100), BigDecimal.valueOf(85)));
@@ -110,7 +111,7 @@ class AjustePagoServiceTest {
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
         liquidada(registro, pago, 40, 40);
         when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.valueOf(-5));
-        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.valueOf(1.8));
+        when(precioAplicado.deLinea(lineaDe.get(registro.getId()))).thenReturn(BigDecimal.valueOf(1.8));
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(30)));
@@ -126,7 +127,7 @@ class AjustePagoServiceTest {
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
         liquidada(registro, pago, 90, 90);
         when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
-        when(precioAplicado.efectivoDelPago(pago)).thenReturn(new BigDecimal("0.900")); // el pago tiene un ajuste de calidad 1.00 -> 0.90
+        when(precioAplicado.deLinea(lineaDe.get(registro.getId()))).thenReturn(new BigDecimal("0.900")); // el pago tiene un ajuste de calidad 1.00 -> 0.90
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(90), BigDecimal.valueOf(85)));
@@ -173,7 +174,7 @@ class AjustePagoServiceTest {
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
         liquidada(registro, pago, 40, 40);
         when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.valueOf(-5));
-        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.ONE);
+        when(precioAplicado.deLinea(lineaDe.get(registro.getId()))).thenReturn(BigDecimal.ONE);
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(30)));
@@ -251,11 +252,13 @@ class AjustePagoServiceTest {
 
     private void liquidada(RegistroAcopio registro, Pago pago, int originales, int liquidados) {
         LineaPago linea = new LineaPago();
+        linea.setId(UUID.randomUUID());
         linea.setPago(pago);
         linea.setRegistroAcopio(registro);
         linea.setLitrosOriginales(BigDecimal.valueOf(originales));
         linea.setLitrosLiquidados(BigDecimal.valueOf(liquidados));
         when(lineaPagoRepository.findByRegistroAcopioId(registro.getId())).thenReturn(Optional.of(linea));
+        lineaDe.put(registro.getId(), linea);
     }
 
     private RegistroAcopio registroCon(BigDecimal litros) {

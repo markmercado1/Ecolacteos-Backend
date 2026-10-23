@@ -291,6 +291,34 @@ con una **corrección justificada y registrada**; la **calidad ajusta el precio 
   `pago`, `correccion_registro` ni los ajustes existentes (solo agrega la base y, en los ya liquidados, el precio congelado).
 - Sin cambios en los contratos de la app móvil.
 
+## 11. Calidad por entrega (Fase C de la auditoría de pagos/historial/IGV)
+
+Migración `V29__ajuste_calidad_entrega.sql` (solo aditiva: una tabla nueva). Permite pagar **una entrega concreta** de un pago ya generado a un precio por litro distinto del
+normal por razones de calidad (p. ej. 100 L de calidad deficiente a 0,90 dentro de un pago de 600 L a 1,00). **Se aplica a mano**; no existe regla automática de calidad a precio
+(queda para la Fase F) ni categorías, umbrales o porcentajes: el precio lo fija quien lo registra.
+
+- **`POST /api/pagos/{id}/lineas/{registroAcopioId}/ajuste-calidad`** (**solo ADMIN**): cuerpo `{precioLitroNuevo, analisisCalidadId, motivo}`. Exige el **análisis de calidad que lo
+  sustenta** (debe ser de esa misma entrega; 400 si es de otra, 404 si no existe), un **motivo** (obligatorio, hasta 500 caracteres) y que el precio sea mayor que cero, con hasta
+  3 decimales y **distinto del precio que la entrega tiene en ese momento** (400). Sin topes ni porcentajes. 404 si la entrega no está liquidada en ese pago. La línea se bloquea durante
+  la operación: dos ajustes simultáneos se aplican uno tras otro y el "precio anterior" de cada uno es el que dejó el anterior. Respuesta 201 con el análisis (id, folio, resultado),
+  el precio normal, el anterior, el nuevo y el `efectoEnElTotal` (= litros liquidados × (precio nuevo − precio normal); negativo = se paga menos; informativo).
+- **`GET /api/pagos/{id}/ajustes-calidad`** (ADMIN, RECEPCION y **CALIDAD**; sin datos personales): historial del pago, del más reciente al más antiguo. CALIDAD **no** gana acceso a los
+  pagos ni a `/lineas`: solo a este historial.
+- **Es append-only** (igual que `ajuste_precio_pago`): no se edita ni se borra; corregir es registrar otro precio. El pago, sus líneas y sus ajustes de litros no se modifican.
+- **Precio aplicado a una entrega** (`PrecioAplicado.deLinea`): su ajuste de calidad más reciente o, si no tiene, el precio efectivo de su pago (el último `ajuste-precio` del pago
+  completo o, sin él, el precio normal). **"La entrega manda"**: una entrega con precio propio ignora el ajuste de precio del pago completo, que solo alcanza a las entregas sin precio
+  propio. El **precio normal** de cada línea (`precioBase`) es el vigente el **día de la liquidación**, como hasta ahora.
+- **Total reconocido.** `PagoResponse.totalAPagar` = suma de (litros liquidados × precio aplicado) de cada entrega, **redondeada una sola vez** a céntimos (half-up). Ejemplo: 600 L a 1,00
+  con 100 L a 0,90 = 500 × 1,00 + 100 × 0,90 = **S/ 590,00** (con un precio único por pago habría sido 589,80). `total` y `precioLitro` siguen siendo los del pago original y
+  `precioLitroEfectivo` el del pago (con su ajuste); el campo aditivo **`ajusteCalidad`** = `totalAPagar` − (litros × `precioLitroEfectivo`) (negativo = se paga menos por precios de calidad).
+  La lista de pagos, el historial por proveedor, el detalle, la exportación a Excel y la **boleta PDF** usan el mismo total; la boleta añade la sección "Precios de calidad por entrega"
+  (análisis, motivo y desglose).
+- **`GET /api/pagos/{id}/lineas`** añade por entrega `precioPropioDeCalidad`, `analisisCalidadId` y `motivoAjusteCalidad`; `precioAplicado` es ahora el de esa entrega.
+- **Ajustes de litros de una entrega** (Fase B): se crean y se valoran al **precio de esa entrega** (su precio de calidad o, si no tiene, el del pago): mientras están PENDIENTES siguen
+  los cambios de ese precio y al liquidarlos se congelan.
+- **Trazabilidad:** entrega → análisis → precio normal → precio aplicado → efecto en el total → liquidación (los pagos efectivos son una fase aparte).
+- Sin cambios en los contratos de la app móvil (los campos nuevos de `PagoResponse` van al final y la app ignora los desconocidos).
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*

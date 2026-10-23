@@ -19,7 +19,11 @@ public record LineaPagoResponse(
     BigDecimal litrosEfectivosActuales,
     // Precio con el que se genero el pago.
     BigDecimal precioBase,
-    // Precio efectivamente aplicado hoy: incluye los ajustes de calidad del pago.
+    // Precio efectivamente aplicado hoy a ESTA entrega: su ajuste de calidad propio o, si no tiene, el del pago (con sus ajustes).
     BigDecimal precioAplicado,
-    UUID correccionAplicadaId
+    UUID correccionAplicadaId,
+    // Fase C: true si la entrega tiene precio de calidad propio (que manda sobre el ajuste del pago completo), con su analisis y motivo.
+    boolean precioPropioDeCalidad,
+    UUID analisisCalidadId,
+    String motivoAjusteCalidad
 ) {}

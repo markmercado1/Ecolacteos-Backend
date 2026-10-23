@@ -1,9 +1,9 @@
 package com.planta.acopio.service;
 
 import com.planta.acopio.dto.LineaPagoResponse;
+import com.planta.acopio.entity.AjusteCalidadEntrega;
 import com.planta.acopio.entity.AjustePago;
 import com.planta.acopio.entity.LineaPago;
-import com.planta.acopio.entity.Pago;
 import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.repository.AjustePagoRepository;
@@ -40,7 +40,7 @@ public class LineaPagoService {
 
     @Transactional(readOnly = true)
     public List<LineaPagoResponse> listarPorPago(UUID pagoId) {
-        Pago pago = pagoRepository.findById(pagoId)
+        pagoRepository.findById(pagoId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Pago no encontrado: " + pagoId));
         List<LineaPago> lineas = lineaPagoRepository.findByPagoIdOrderByCreadoEnAscIdAsc(pagoId);
 
@@ -50,15 +50,19 @@ public class LineaPagoService {
         }
         Map<UUID, LitrosEfectivos.Efectivo> efectivos = litrosEfectivos.deRegistros(
                 lineas.stream().map(LineaPago::getRegistroAcopio).toList());
-        BigDecimal precio = precioAplicado.efectivoDelPago(pago);
+        Map<UUID, BigDecimal> precios = precioAplicado.deLineas(lineas);
+        Map<UUID, AjusteCalidadEntrega> propios = precioAplicado.ultimosAjustesDeCalidad(lineas);
 
         return lineas.stream().map(l -> {
             RegistroAcopio r = l.getRegistroAcopio();
+            AjusteCalidadEntrega propio = propios.get(l.getId());
             return new LineaPagoResponse(
                     r.getId(), r.getFechaHora(), l.getLitrosOriginales(), l.getLitrosLiquidados(),
                     l.getLitrosLiquidados().add(sumaAjustes.getOrDefault(r.getId(), BigDecimal.ZERO)),
-                    efectivos.get(r.getId()).litros(), l.getPrecioBase(), precio,
-                    l.getCorreccionAplicada() != null ? l.getCorreccionAplicada().getId() : null);
+                    efectivos.get(r.getId()).litros(), l.getPrecioBase(), precios.get(l.getId()),
+                    l.getCorreccionAplicada() != null ? l.getCorreccionAplicada().getId() : null,
+                    propio != null, propio != null ? propio.getAnalisisCalidad().getId() : null,
+                    propio != null ? propio.getMotivo() : null);
         }).toList();
     }
 }
