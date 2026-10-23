@@ -12,10 +12,14 @@ import com.lowagie.text.Rectangle;
 import com.lowagie.text.pdf.PdfPCell;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
+import com.planta.acopio.entity.AjusteCalidadEntrega;
 import com.planta.acopio.entity.AjustePrecioPago;
+import com.planta.acopio.entity.LineaPago;
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
+import com.planta.acopio.repository.AjusteCalidadEntregaRepository;
 import com.planta.acopio.repository.AjustePrecioPagoRepository;
+import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
@@ -30,7 +34,9 @@ import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Locale;
 import java.util.UUID;
 
@@ -52,12 +58,17 @@ public class BoletaPagoService {
 
     private final PagoRepository pagoRepository;
     private final AjustePrecioPagoRepository ajustePrecioRepository;
+    private final LineaPagoRepository lineaPagoRepository;
+    private final AjusteCalidadEntregaRepository ajusteCalidadRepository;
     private final String empresa;
 
     public BoletaPagoService(PagoRepository pagoRepository, AjustePrecioPagoRepository ajustePrecioRepository,
+                              LineaPagoRepository lineaPagoRepository, AjusteCalidadEntregaRepository ajusteCalidadRepository,
                               @Value("${app.empresa.nombre:EcoLácteos Huata}") String empresa) {
         this.pagoRepository = pagoRepository;
         this.ajustePrecioRepository = ajustePrecioRepository;
+        this.lineaPagoRepository = lineaPagoRepository;
+        this.ajusteCalidadRepository = ajusteCalidadRepository;
         this.empresa = empresa;
     }
 
@@ -76,7 +87,26 @@ public class BoletaPagoService {
 
         BigDecimal precioEfectivo = ajustes.isEmpty() ? pago.getPrecioLitro() : ajustes.get(ajustes.size() - 1).getPrecioLitroNuevo();
         BigDecimal totalOriginal = PagoService.calcularTotal(pago.getLitrosTotales(), pago.getPrecioLitro());
-        BigDecimal totalAPagar = PagoService.calcularTotal(pago.getLitrosTotales(), precioEfectivo);
+        BigDecimal totalSubtotal = PagoService.calcularTotal(pago.getLitrosTotales(), precioEfectivo);
+
+        // Fase C: precios de calidad de entregas concretas (cronologico). El total a pagar suma litros x precio de cada entrega y se
+        // redondea una sola vez; una entrega con precio propio manda sobre el ajuste de precio del pago completo.
+        List<LineaPago> lineas = lineaPagoRepository.findByPagoIdOrderByCreadoEnAscIdAsc(pagoId);
+        List<AjusteCalidadEntrega> calidad = lineas.isEmpty() ? new ArrayList<>()
+                : new ArrayList<>(ajusteCalidadRepository.findByPagoLineaPagoIdOrderByCreadoEnDescIdDesc(pagoId));
+        Collections.reverse(calidad);
+        BigDecimal totalAPagar = totalSubtotal;
+        if (!calidad.isEmpty()) {
+            Map<UUID, BigDecimal> propios = new HashMap<>();
+            for (AjusteCalidadEntrega a : calidad) {
+                propios.put(a.getPagoLinea().getId(), a.getPrecioNuevo());
+            }
+            Map<UUID, BigDecimal> precios = new HashMap<>();
+            for (LineaPago l : lineas) {
+                precios.put(l.getId(), propios.getOrDefault(l.getId(), precioEfectivo));
+            }
+            totalAPagar = PrecioAplicado.totalReconocido(lineas, precios);
+        }
 
         ByteArrayOutputStream salida = new ByteArrayOutputStream();
         Document doc = new Document(PageSize.A4, 48, 48, 48, 48);
@@ -139,12 +169,38 @@ public class BoletaPagoService {
                 doc.add(t);
             }
 
+            // --- Precios de calidad por entrega (solo si los hay) ---
+            if (!calidad.isEmpty()) {
+                doc.add(espacio(12));
+                doc.add(new Paragraph("Precios de calidad por entrega", seccion));
+                PdfPTable t = new PdfPTable(new float[]{1.3f, 1.1f, 1.7f, 1.8f, 2.6f});
+                t.setWidthPercentage(100);
+                t.setSpacingBefore(4);
+                for (String h : new String[]{"Entrega", "Litros", "Precio por litro", "Análisis de calidad", "Motivo"}) {
+                    encabezado(t, h);
+                }
+                for (AjusteCalidadEntrega a : calidad) {
+                    celda(t, a.getPagoLinea().getRegistroAcopio().getFechaHora().format(FECHA), normal);
+                    celda(t, litros(a.getPagoLinea().getLitrosLiquidados()), normal);
+                    celda(t, precio(a.getPrecioAnterior()) + " a " + precio(a.getPrecioNuevo()), normal);
+                    celda(t, a.getAnalisisCalidad().getFolioMuestra()
+                            + (a.getAnalisisCalidad().getResultado() != null ? " (" + a.getAnalisisCalidad().getResultado().name() + ")" : ""), normal);
+                    celda(t, a.getMotivo(), normal);
+                }
+                doc.add(t);
+                doc.add(espacio(8));
+                PdfPTable desglose = tabla(new float[]{2f, 1.4f});
+                fila(desglose, "Subtotal a precio del pago", soles(totalSubtotal, 2), normal, negrita);
+                fila(desglose, "Ajuste por calidad de entregas", soles(totalAPagar.subtract(totalSubtotal), 2), normal, negrita);
+                doc.add(desglose);
+            }
+
             // --- Total a pagar ---
             doc.add(espacio(14));
             PdfPTable resumen = new PdfPTable(new float[]{2f, 1.4f});
             resumen.setWidthPercentage(100);
             PdfPCell etiqueta = new PdfPCell(new Phrase("TOTAL A PAGAR"
-                    + (ajustes.isEmpty() ? "" : "  (" + litros(pago.getLitrosTotales()) + " × " + precio(precioEfectivo) + ")"), total));
+                    + (ajustes.isEmpty() || !calidad.isEmpty() ? "" : "  (" + litros(pago.getLitrosTotales()) + " × " + precio(precioEfectivo) + ")"), total));
             PdfPCell importe = new PdfPCell(new Phrase(soles(totalAPagar, 2), total));
             for (PdfPCell c : List.of(etiqueta, importe)) {
                 c.setBackgroundColor(SALVIA);

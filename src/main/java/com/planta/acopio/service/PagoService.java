@@ -2,6 +2,7 @@ package com.planta.acopio.service;
 
 import com.planta.acopio.dto.GenerarPagoRequest;
 import com.planta.acopio.dto.PagoResponse;
+import com.planta.acopio.entity.AjusteCalidadEntrega;
 import com.planta.acopio.entity.AjustePrecioPago;
 import com.planta.acopio.entity.LineaPago;
 import com.planta.acopio.entity.Pago;
@@ -11,6 +12,7 @@ import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
+import com.planta.acopio.repository.AjusteCalidadEntregaRepository;
 import com.planta.acopio.repository.AjustePrecioPagoRepository;
 import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
@@ -50,11 +52,13 @@ public class PagoService {
     private final EntityManager entityManager;
     private final LineaPagoRepository lineaPagoRepository;
     private final LitrosEfectivos litrosEfectivos;
+    private final AjusteCalidadEntregaRepository ajusteCalidadRepository;
 
     public PagoService(PagoRepository pagoRepository, ProveedorRepository proveedorRepository,
                         RegistroAcopioRepository registroAcopioRepository, PrecioLitroRepository precioLitroRepository,
                         AjustePrecioPagoRepository ajustePrecioRepository, EntityManager entityManager,
-                        LineaPagoRepository lineaPagoRepository, LitrosEfectivos litrosEfectivos) {
+                        LineaPagoRepository lineaPagoRepository, LitrosEfectivos litrosEfectivos,
+                        AjusteCalidadEntregaRepository ajusteCalidadRepository) {
         this.pagoRepository = pagoRepository;
         this.proveedorRepository = proveedorRepository;
         this.registroAcopioRepository = registroAcopioRepository;
@@ -63,6 +67,7 @@ public class PagoService {
         this.entityManager = entityManager;
         this.lineaPagoRepository = lineaPagoRepository;
         this.litrosEfectivos = litrosEfectivos;
+        this.ajusteCalidadRepository = ajusteCalidadRepository;
     }
 
     @Transactional
@@ -151,7 +156,8 @@ public class PagoService {
     public List<PagoResponse> historialPorProveedor(java.util.UUID proveedorId) {
         List<Pago> pagos = pagoRepository.findByProveedorIdOrderBySemanaInicioDesc(proveedorId);
         Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagos);
-        return pagos.stream().map(p -> toResponse(p, efectivos.get(p.getId()))).toList();
+        Map<UUID, BigDecimal> totales = totalesReconocidos(pagos, efectivos);
+        return pagos.stream().map(p -> toResponse(p, efectivos.get(p.getId()), totales.get(p.getId()))).toList();
     }
 
     // Auditoria de bajo riesgo (Fase 1): antes solo se podia listar pago por
@@ -165,7 +171,8 @@ public class PagoService {
     public Page<PagoResponse> listar(String busqueda, Pageable pageable) {
         Page<Pago> pagina = pagoRepository.buscar(BusquedaTexto.patronLike(busqueda), pageable);
         Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagina.getContent());
-        return pagina.map(p -> toResponse(p, efectivos.get(p.getId())));
+        Map<UUID, BigDecimal> totales = totalesReconocidos(pagina.getContent(), efectivos);
+        return pagina.map(p -> toResponse(p, efectivos.get(p.getId()), totales.get(p.getId())));
     }
 
     // Paginacion pendiente: historial por proveedor paginado para la web. La
@@ -174,7 +181,8 @@ public class PagoService {
     public Page<PagoResponse> historialPorProveedor(java.util.UUID proveedorId, Pageable pageable) {
         Page<Pago> pagina = pagoRepository.findByProveedorIdOrderBySemanaInicioDescIdDesc(proveedorId, pageable);
         Map<UUID, BigDecimal> efectivos = preciosEfectivos(pagina.getContent());
-        return pagina.map(p -> toResponse(p, efectivos.get(p.getId())));
+        Map<UUID, BigDecimal> totales = totalesReconocidos(pagina.getContent(), efectivos);
+        return pagina.map(p -> toResponse(p, efectivos.get(p.getId()), totales.get(p.getId())));
     }
 
     // Auditoria CRUD (prioridad MEDIA): faltaba el detalle individual de un pago.
@@ -223,17 +231,55 @@ public class PagoService {
         return efectivos;
     }
 
-    private PagoResponse toResponse(Pago p) {
-        return toResponse(p, precioEfectivo(p));
+    // Fase C: total reconocido de cada pago = suma de (litros liquidados x precio aplicado) de sus entregas, redondeado UNA vez al final.
+    // El precio de una entrega es su ajuste de calidad propio y, si no tiene, el precio efectivo de su pago ("la entrega manda"). Un
+    // pago sin lineas (no deberia existir tras V28) conserva el calculo anterior. Dos consultas para todos los pagos pedidos.
+    private Map<UUID, BigDecimal> totalesReconocidos(Collection<Pago> pagos, Map<UUID, BigDecimal> preciosDelPago) {
+        Map<UUID, BigDecimal> totales = new HashMap<>();
+        if (pagos.isEmpty()) {
+            return totales;
+        }
+        List<LineaPago> lineas = lineaPagoRepository.findByPagoIdIn(pagos.stream().map(Pago::getId).toList());
+        Map<UUID, List<LineaPago>> lineasPorPago = lineas.stream().collect(Collectors.groupingBy(l -> l.getPago().getId()));
+        Map<UUID, BigDecimal> propios = new HashMap<>();
+        if (!lineas.isEmpty()) {
+            for (AjusteCalidadEntrega a : ajusteCalidadRepository.findByPagoLineaIdInOrderByCreadoEnAscIdAsc(
+                    lineas.stream().map(LineaPago::getId).toList())) { // cronologico: el ultimo de cada linea pisa a los anteriores
+                propios.put(a.getPagoLinea().getId(), a.getPrecioNuevo());
+            }
+        }
+        for (Pago p : pagos) {
+            BigDecimal delPago = preciosDelPago.getOrDefault(p.getId(), p.getPrecioLitro());
+            List<LineaPago> delPagoLineas = lineasPorPago.getOrDefault(p.getId(), List.of());
+            if (delPagoLineas.isEmpty()) {
+                totales.put(p.getId(), calcularTotal(p.getLitrosTotales(), delPago));
+            } else {
+                Map<UUID, BigDecimal> precios = new HashMap<>();
+                for (LineaPago l : delPagoLineas) {
+                    precios.put(l.getId(), propios.getOrDefault(l.getId(), delPago));
+                }
+                totales.put(p.getId(), PrecioAplicado.totalReconocido(delPagoLineas, precios));
+            }
+        }
+        return totales;
     }
 
-    private PagoResponse toResponse(Pago p, BigDecimal precioEfectivo) {
+    private PagoResponse toResponse(Pago p) {
+        BigDecimal efectivo = precioEfectivo(p);
+        Map<UUID, BigDecimal> precios = new HashMap<>();
+        precios.put(p.getId(), efectivo);
+        return toResponse(p, efectivo, totalesReconocidos(List.of(p), precios).get(p.getId()));
+    }
+
+    private PagoResponse toResponse(Pago p, BigDecimal precioEfectivo, BigDecimal totalReconocido) {
         BigDecimal efectivo = precioEfectivo != null ? precioEfectivo : p.getPrecioLitro();
+        BigDecimal base = calcularTotal(p.getLitrosTotales(), efectivo);
+        BigDecimal total = totalReconocido != null ? totalReconocido : base;
         return new PagoResponse(
                 p.getId(), p.getProveedor().getId(), p.getProveedor().getNombre(),
                 p.getSemanaInicio(), p.getSemanaFin(), p.getLitrosTotales(), p.getPrecioLitro(),
                 p.getTotal(), p.getComprobanteGenerado(),
                 p.getRegistrosLiquidados().stream().map(RegistroAcopio::getId).collect(Collectors.toList()),
-                efectivo, calcularTotal(p.getLitrosTotales(), efectivo));
+                efectivo, total, total.subtract(base));
     }
 }

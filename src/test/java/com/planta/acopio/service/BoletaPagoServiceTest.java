@@ -2,13 +2,19 @@ package com.planta.acopio.service;
 
 import com.lowagie.text.pdf.PdfReader;
 import com.lowagie.text.pdf.parser.PdfTextExtractor;
+import com.planta.acopio.entity.AjusteCalidadEntrega;
 import com.planta.acopio.entity.AjustePrecioPago;
+import com.planta.acopio.entity.AnalisisCalidad;
+import com.planta.acopio.entity.LineaPago;
+import com.planta.acopio.entity.ResultadoCalidad;
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.entity.Proveedor;
 import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
+import com.planta.acopio.repository.AjusteCalidadEntregaRepository;
 import com.planta.acopio.repository.AjustePrecioPagoRepository;
+import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -36,13 +42,15 @@ class BoletaPagoServiceTest {
 
     @Mock private PagoRepository pagoRepository;
     @Mock private AjustePrecioPagoRepository ajustePrecioRepository;
+    @Mock private LineaPagoRepository lineaPagoRepository;
+    @Mock private AjusteCalidadEntregaRepository ajusteCalidadRepository;
 
     private BoletaPagoService service;
     private Pago pago;
 
     @BeforeEach
     void setUp() {
-        service = new BoletaPagoService(pagoRepository, ajustePrecioRepository, "EcoLácteos Huata");
+        service = new BoletaPagoService(pagoRepository, ajustePrecioRepository, lineaPagoRepository, ajusteCalidadRepository, "EcoLácteos Huata");
         pago = new Pago();
         pago.setId(UUID.fromString("a1b2c3d4-0000-4000-8000-000000000001"));
         Proveedor proveedor = new Proveedor();
@@ -146,5 +154,46 @@ class BoletaPagoServiceTest {
         } finally {
             lector.close();
         }
+    }
+
+
+    // Fase C: la boleta suma litros x precio de cada entrega (S/ 590.00), lista el precio de calidad con su analisis y motivo, y muestra el desglose.
+    @Test
+    void conUnPrecioDeCalidadPorEntregaMuestraElAnalisisElMotivoElDesgloseYElTotalReconocido() throws IOException {
+        pago.setLitrosTotales(new BigDecimal("600"));
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        when(ajustePrecioRepository.findByPagoIdOrderByCreadoEnDescIdDesc(pago.getId())).thenReturn(List.of());
+
+        List<LineaPago> lineas = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            LineaPago l = new LineaPago();
+            l.setId(UUID.randomUUID());
+            l.setPago(pago);
+            RegistroAcopio r = new RegistroAcopio();
+            r.setFechaHora(LocalDateTime.of(2026, 10, 15 + i, 6, 0));
+            l.setRegistroAcopio(r);
+            l.setLitrosLiquidados(new BigDecimal("100"));
+            l.setPrecioBase(new BigDecimal("1.000"));
+            lineas.add(l);
+        }
+        when(lineaPagoRepository.findByPagoIdOrderByCreadoEnAscIdAsc(pago.getId())).thenReturn(lineas);
+        AnalisisCalidad analisis = new AnalisisCalidad();
+        analisis.setId(UUID.randomUUID());
+        analisis.setFolioMuestra("F-0042");
+        analisis.setResultado(ResultadoCalidad.OBSERVADO);
+        AjusteCalidadEntrega calidad = new AjusteCalidadEntrega();
+        calidad.setPagoLinea(lineas.get(0));
+        calidad.setPrecioAnterior(new BigDecimal("1.000"));
+        calidad.setPrecioNuevo(new BigDecimal("0.900"));
+        calidad.setAnalisisCalidad(analisis);
+        calidad.setMotivo("Agua añadida detectada");
+        when(ajusteCalidadRepository.findByPagoLineaPagoIdOrderByCreadoEnDescIdDesc(pago.getId())).thenReturn(List.of(calidad));
+
+        String texto = texto(service.generarPdf(pago.getId()));
+
+        assertThat(texto).contains("Precios de calidad por entrega", "15/10/2026", "100 L", "S/ 1.00 a S/ 0.90",
+                "F-0042 (OBSERVADO)", "Agua añadida detectada");
+        assertThat(texto).contains("Subtotal a precio del pagoS/ 600.00", "Ajuste por calidad de entregasS/ -10.00");
+        assertThat(texto).contains("S/ 590.00");
     }
 }

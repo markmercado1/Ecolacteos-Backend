@@ -41,6 +41,7 @@ class PagoServiceTest {
     @Mock private EntityManager entityManager;
     @Mock private LineaPagoRepository lineaPagoRepository;
     @Mock private LitrosEfectivos litrosEfectivos;
+    @Mock private AjusteCalidadEntregaRepository ajusteCalidadRepository;
 
     private PagoService service;
     private final UUID proveedorId = UUID.randomUUID();
@@ -49,7 +50,7 @@ class PagoServiceTest {
     void setUp() {
         service = new PagoService(pagoRepository, proveedorRepository, registroAcopioRepository,
                 precioLitroRepository, ajustePrecioRepository, entityManager,
-                lineaPagoRepository, litrosEfectivos);
+                lineaPagoRepository, litrosEfectivos, ajusteCalidadRepository);
     }
 
     @Test
@@ -271,5 +272,85 @@ class PagoServiceTest {
         service.listar("  HUAMÁN ", pageable);
 
         verify(pagoRepository).buscar("%huaman%", pageable);
+    }
+
+
+    // Fase C: el total reconocido del pago suma litros x precio de CADA entrega (redondeado una vez) y manda su precio de calidad propio.
+    @Test
+    void elTotalAPagarSumaLitrosPorPrecioDeCadaEntregaYReportaElAjusteDeCalidad() {
+        Pago pago = pagoDe600Litros();
+        List<LineaPago> lineas = seisLineasDe100Litros(pago);
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        when(lineaPagoRepository.findByPagoIdIn(any())).thenReturn(lineas);
+        AjusteCalidadEntrega calidad = new AjusteCalidadEntrega();
+        calidad.setPagoLinea(lineas.get(0));
+        calidad.setPrecioNuevo(new BigDecimal("0.900"));
+        when(ajusteCalidadRepository.findByPagoLineaIdInOrderByCreadoEnAscIdAsc(any())).thenReturn(List.of(calidad));
+
+        var respuesta = service.obtener(pago.getId());
+
+        assertThat(respuesta.totalAPagar()).isEqualByComparingTo("590.00");   // 500 x 1.00 + 100 x 0.90
+        assertThat(respuesta.ajusteCalidad()).isEqualByComparingTo("-10.00"); // se paga 10.00 menos que a precio normal
+        assertThat(respuesta.precioLitroEfectivo()).isEqualByComparingTo("1.000"); // el precio del pago no cambia
+    }
+
+    // "La entrega manda": el ajuste de precio del pago completo (0.80) alcanza solo a las entregas SIN precio de calidad propio.
+    @Test
+    void elAjusteDelPagoCompletoSoloAlcanzaALasEntregasSinPrecioPropio() {
+        Pago pago = pagoDe600Litros();
+        List<LineaPago> lineas = seisLineasDe100Litros(pago);
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        AjustePrecioPago delPago = new AjustePrecioPago();
+        delPago.setPago(pago);
+        delPago.setPrecioLitroNuevo(new BigDecimal("0.800"));
+        when(ajustePrecioRepository.findFirstByPagoIdOrderByCreadoEnDescIdDesc(pago.getId())).thenReturn(Optional.of(delPago));
+        when(lineaPagoRepository.findByPagoIdIn(any())).thenReturn(lineas);
+        AjusteCalidadEntrega calidad = new AjusteCalidadEntrega();
+        calidad.setPagoLinea(lineas.get(0));
+        calidad.setPrecioNuevo(new BigDecimal("0.900"));
+        when(ajusteCalidadRepository.findByPagoLineaIdInOrderByCreadoEnAscIdAsc(any())).thenReturn(List.of(calidad));
+
+        var respuesta = service.obtener(pago.getId());
+
+        assertThat(respuesta.totalAPagar()).isEqualByComparingTo("490.00");   // 100 x 0.90 + 500 x 0.80
+        assertThat(respuesta.precioLitroEfectivo()).isEqualByComparingTo("0.800");
+        assertThat(respuesta.ajusteCalidad()).isEqualByComparingTo("10.00");  // la entrega con 0.90 vale 10.00 mas que a 0.80
+    }
+
+    @Test
+    void sinPreciosDeCalidadElTotalEsElDeSiempre() {
+        Pago pago = pagoDe600Litros();
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        when(lineaPagoRepository.findByPagoIdIn(any())).thenReturn(seisLineasDe100Litros(pago));
+        when(ajusteCalidadRepository.findByPagoLineaIdInOrderByCreadoEnAscIdAsc(any())).thenReturn(List.of());
+
+        var respuesta = service.obtener(pago.getId());
+
+        assertThat(respuesta.totalAPagar()).isEqualByComparingTo("600.00");
+        assertThat(respuesta.ajusteCalidad()).isEqualByComparingTo("0.00");
+    }
+
+    private Pago pagoDe600Litros() {
+        Pago pago = new Pago();
+        pago.setId(UUID.randomUUID());
+        Proveedor proveedor = new Proveedor();
+        proveedor.setId(UUID.randomUUID());
+        proveedor.setNombre("Proveedor");
+        pago.setProveedor(proveedor);
+        pago.setLitrosTotales(new BigDecimal("600"));
+        pago.setPrecioLitro(new BigDecimal("1.000"));
+        return pago;
+    }
+
+    private List<LineaPago> seisLineasDe100Litros(Pago pago) {
+        List<LineaPago> lineas = new java.util.ArrayList<>();
+        for (int i = 0; i < 6; i++) {
+            LineaPago l = new LineaPago();
+            l.setId(UUID.randomUUID());
+            l.setPago(pago);
+            l.setLitrosLiquidados(new BigDecimal("100"));
+            lineas.add(l);
+        }
+        return lineas;
     }
 }
