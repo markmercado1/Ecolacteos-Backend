@@ -41,6 +41,7 @@ class RegistroAcopioServiceTest {
     @Mock private AnomaliaService anomaliaService;
     @Mock private LoteProduccionRepository loteProduccionRepository;
     @Mock private JornadaRepository jornadaRepository;
+    @Mock private ZonaHistoricaService zonaHistoricaService;
 
     private RegistroAcopioService service;
 
@@ -51,7 +52,7 @@ class RegistroAcopioServiceTest {
     void setUp() {
         service = new RegistroAcopioService(repository, proveedorRepository, unidadRepository,
                 usuarioRepository, motivoObservacionRepository, anomaliaService, loteProduccionRepository,
-                jornadaRepository, 30, 5);
+                jornadaRepository, zonaHistoricaService, 30, 5);
 
         // Simula un usuario autenticado (JWT) para las pruebas que llegan hasta usuarioActual()
         SecurityContextHolder.getContext().setAuthentication(
@@ -106,6 +107,80 @@ class RegistroAcopioServiceTest {
         assertThat(respuesta.uuidCliente()).isEqualTo(uuidCliente);
         verify(repository).save(any(RegistroAcopio.class));
         verify(anomaliaService).evaluarNuevoRegistro(any(RegistroAcopio.class)); // RF-INN-03
+    }
+
+    // Fase A: la entrega guarda la zona que el proveedor tenia en fechaHora (aunque hoy este en otra); sin periodo claro
+    // queda sin zona, nunca con la zona actual como relleno.
+    @Test
+    void laEntregaGuardaLaZonaHistoricaDelMomentoYNoLaActualDelProveedor() {
+        String uuidCliente = UUID.randomUUID().toString();
+        when(repository.findByUuidCliente(uuidCliente)).thenReturn(Optional.empty());
+
+        Zona zonaActual = new Zona();
+        zonaActual.setId(UUID.randomUUID());
+        Zona zonaDeEseDia = new Zona();
+        zonaDeEseDia.setId(UUID.randomUUID());
+        Proveedor proveedor = new Proveedor();
+        proveedor.setId(proveedorId);
+        proveedor.setNombre("Proveedor Test");
+        proveedor.setActivo(true);
+        proveedor.setZonaActual(zonaActual);
+        when(proveedorRepository.findById(proveedorId)).thenReturn(Optional.of(proveedor));
+
+        Usuario acopiador = new Usuario();
+        acopiador.setId(UUID.randomUUID());
+        acopiador.setEmail("acopiador@planta.com");
+        when(usuarioRepository.findByEmail("acopiador@planta.com")).thenReturn(Optional.of(acopiador));
+        Unidad unidad = new Unidad();
+        unidad.setId(unidadId);
+        unidad.setResponsable(acopiador);
+        when(unidadRepository.findById(unidadId)).thenReturn(Optional.of(unidad));
+        when(repository.save(any(RegistroAcopio.class))).thenAnswer(inv -> {
+            RegistroAcopio r = inv.getArgument(0);
+            r.setId(UUID.randomUUID());
+            return r;
+        });
+
+        var dto = dtoValido(uuidCliente);
+        when(zonaHistoricaService.zonaEn(proveedorId, dto.fechaHora())).thenReturn(Optional.of(zonaDeEseDia));
+
+        service.registrarOIgnorarSiDuplicado(dto);
+
+        var capturado = org.mockito.ArgumentCaptor.forClass(RegistroAcopio.class);
+        verify(repository).save(capturado.capture());
+        assertThat(capturado.getValue().getZona()).isSameAs(zonaDeEseDia).isNotSameAs(zonaActual);
+    }
+
+    @Test
+    void siNoHayPeriodoDeZonaClaroLaEntregaQuedaSinZona() {
+        String uuidCliente = UUID.randomUUID().toString();
+        when(repository.findByUuidCliente(uuidCliente)).thenReturn(Optional.empty());
+
+        Zona zonaActual = new Zona();
+        zonaActual.setId(UUID.randomUUID());
+        Proveedor proveedor = new Proveedor();
+        proveedor.setId(proveedorId);
+        proveedor.setNombre("Proveedor Test");
+        proveedor.setActivo(true);
+        proveedor.setZonaActual(zonaActual);
+        when(proveedorRepository.findById(proveedorId)).thenReturn(Optional.of(proveedor));
+
+        Usuario acopiador = new Usuario();
+        acopiador.setId(UUID.randomUUID());
+        acopiador.setEmail("acopiador@planta.com");
+        when(usuarioRepository.findByEmail("acopiador@planta.com")).thenReturn(Optional.of(acopiador));
+        Unidad unidad = new Unidad();
+        unidad.setId(unidadId);
+        unidad.setResponsable(acopiador);
+        when(unidadRepository.findById(unidadId)).thenReturn(Optional.of(unidad));
+        when(repository.save(any(RegistroAcopio.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(zonaHistoricaService.zonaEn(any(), any())).thenReturn(Optional.empty());
+
+        service.registrarOIgnorarSiDuplicado(dtoValido(uuidCliente));
+
+        var capturado = org.mockito.ArgumentCaptor.forClass(RegistroAcopio.class);
+        verify(repository).save(capturado.capture());
+        assertThat(capturado.getValue().getZona()).isNull();
     }
 
     // Jornada "Acopio multi-zona" (frontend móvil): verifica con evidencia, no solo lectura de código, que

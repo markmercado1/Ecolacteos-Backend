@@ -218,7 +218,7 @@ class ImportacionProveedoresIntegrationTest {
         assertThat(conZona.getTelefono()).isEqualTo("+51987654301");           // normalizado
         assertThat(conZona.getZonaActual().getId()).isEqualTo(zona.getId());
         assertThat(conZona.getActivo()).isTrue();
-        assertThat(historialRepository.findByProveedorIdAndHastaIsNull(conZona.getId())).isPresent()
+        assertThat(historialRepository.findByProveedorIdAndFinEnIsNull(conZona.getId())).isPresent()
                 .get().extracting(h -> h.getZona().getId()).isEqualTo(zona.getId());
 
         Proveedor sinZona = proveedorPorDni(2);

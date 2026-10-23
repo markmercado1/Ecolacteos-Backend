@@ -2,9 +2,11 @@ package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Proveedor;
 import com.planta.acopio.service.BusquedaTexto;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.util.List;
@@ -14,6 +16,11 @@ import java.util.UUID;
 public interface ProveedorRepository extends JpaRepository<Proveedor, UUID> {
     Optional<Proveedor> findByDni(String dni);
     Optional<Proveedor> findByCodigoQr(String codigoQr);
+
+    /** Reasignar zona: serializa los cambios de zona de un mismo proveedor (bloqueo de fila hasta el fin de la transaccion). */
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Proveedor p WHERE p.id = :id")
+    Optional<Proveedor> findByIdParaActualizar(@Param("id") UUID id);
 
     /** Importacion de Excel: de estos DNI, los que ya estan registrados (activos o no), en una sola consulta. */
     @Query("SELECT p.dni FROM Proveedor p WHERE p.dni IN :dnis")
