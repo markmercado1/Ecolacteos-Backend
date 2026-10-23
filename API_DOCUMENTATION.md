@@ -244,6 +244,26 @@ mismos roles y filtros que el listado de cada tabla. Recursos: `proveedores`, `a
 `DELETE /{id}`. Solo crea: un DNI/nombre repetido se omite y se reporta. Proveedores se crean con `ProveedorService.crear` (QR, historial de zona,
 sincronización móvil) e insumos con `InsumoService.crear` (SALDO_INICIAL en el kardex). Migración `V26__importacion_excel.sql`.
 
+## 9. Zonas históricas (Fase A de la auditoría de pagos/historial/IGV)
+
+Migración `V27__zonas_historicas.sql` (solo aditiva). La zona de una **entrega** es la que tenía el proveedor *cuando se hizo*, no la actual.
+
+- **Periodos por instante.** `historial_zona` guarda `inicio_en`/`fin_en` (`[inicio, fin)`, `fin_en` nulo = abierto), `zona_origen_id`, `motivo`
+  y `usuario_id`. `desde`/`hasta` se conservan (`hasta` = último día completo, nunca anterior a `desde`). Un índice único parcial garantiza **un solo
+  periodo abierto por proveedor**; `PUT /api/proveedores/{id}/zona` bloquea la fila del proveedor, así que dos cambios simultáneos se aplican uno tras otro.
+- **`PUT /api/proveedores/{id}/zona?zonaId=…&motivo=…`** (ADMIN): `motivo` es opcional (hasta 200 caracteres; más → 400). Antes, reasignar el mismo día que se
+  abrió el periodo lo dejaba con `hasta < desde`.
+- **`GET /api/proveedores/{id}/historial-zona`** (ADMIN): además de los campos de siempre trae `inicioEn`, `finEn`, `zonaOrigenNombre`, `motivo`,
+  `usuarioNombre`, `requiereRevision` y `notaRevision` (campos aditivos).
+- **`registro_acopio.zona_id`.** Se asigna al registrar la entrega según su `fechaHora` (también si se sincroniza tarde, después de un cambio de zona). Si ningún
+  periodo válido la cubre queda `NULL`: nunca se usa la zona actual como relleno. **No** se expone en `/api/registros-acopio*` (contratos de la app móvil sin
+  cambios); los reportes siguen agrupando por la zona actual hasta la Fase E.
+- **Datos anteriores.** Los periodos con `hasta < desde` (reasignaciones el mismo día con el código anterior) se **marcan** `requiere_revision` con duración cero
+  y no se borran ni se usan para decidir una zona. Las entregas existentes reciben zona solo si un único periodo válido las cubre y el día no es un **día de
+  cambio de zona** de ese proveedor (la hora del cambio no se registraba); el resto queda en `NULL`.
+- **`GET /api/admin/zonas/revision`** (solo ADMIN, solo lectura): periodos marcados y entregas sin zona (primeras 500 + `totalEntregasSinZona`), con motivo
+  `DIA_DE_CAMBIO`, `SIN_PERIODO` u `OTRO`. No corrige nada: la resolución de cada caso es una decisión manual pendiente.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*

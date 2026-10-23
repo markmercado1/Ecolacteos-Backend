@@ -49,6 +49,11 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
     @Query("SELECT SUM(r.litros) FROM RegistroAcopio r WHERE r.unidad.id = :unidadId AND r.fechaHora BETWEEN :inicio AND :fin")
     BigDecimal sumLitrosPorUnidadYFecha(@Param("unidadId") UUID unidadId, @Param("inicio") LocalDateTime inicio, @Param("fin") LocalDateTime fin);
 
+    // Fase A: entregas cuya zona historica no se pudo determinar (informe de revision de zonas).
+    @Query(value = "SELECT r FROM RegistroAcopio r WHERE r.zona IS NULL ORDER BY r.proveedor.nombre, r.fechaHora",
+           countQuery = "SELECT count(r) FROM RegistroAcopio r WHERE r.zona IS NULL")
+    Page<RegistroAcopio> findSinZona(Pageable pageable);
+
     // Base de la liquidacion semanal (PagoService)
     List<RegistroAcopio> findByProveedorIdAndFechaHoraBetween(UUID proveedorId, LocalDateTime inicio, LocalDateTime fin);
 

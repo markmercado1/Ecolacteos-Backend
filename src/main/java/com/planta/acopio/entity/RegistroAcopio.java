@@ -56,6 +56,12 @@ public class RegistroAcopio {
     @JoinColumn(name = "jornada_id")
     private Jornada jornada;
 
+    // Zona del proveedor EN EL MOMENTO de la entrega (Fase A, V27). NULL = no se pudo determinar (entrega anterior a
+    // la historia de zonas o en un dia de cambio de zona sin hora registrada): la lista el informe de revision de zonas.
+    @ManyToOne
+    @JoinColumn(name = "zona_id", updatable = false)
+    private Zona zona;
+
     @Column(name = "litros_por_voz", nullable = false)
     private Boolean litrosPorVoz = false; // RF-INN-02
 
@@ -80,6 +86,8 @@ public class RegistroAcopio {
     public void setAcopiador(Usuario acopiador) { this.acopiador = acopiador; }
     public Unidad getUnidad() { return unidad; }
     public void setUnidad(Unidad unidad) { this.unidad = unidad; }
+    public Zona getZona() { return zona; }
+    public void setZona(Zona zona) { this.zona = zona; }
     public LocalDateTime getFechaHora() { return fechaHora; }
     public void setFechaHora(LocalDateTime fechaHora) { this.fechaHora = fechaHora; }
     public BigDecimal getLitros() { return litros; }

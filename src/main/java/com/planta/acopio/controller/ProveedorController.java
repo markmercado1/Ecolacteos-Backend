@@ -208,7 +208,9 @@ public class ProveedorController {
     @Operation(
             summary = "Reasignar zona",
             description = "Rol requerido: ADMIN. No es un simple update: cierra automáticamente el período "
-                    + "de HistorialZona abierto (si existe) antes de abrir uno nuevo con la zona indicada."
+                    + "de HistorialZona abierto (si existe) antes de abrir uno nuevo con la zona indicada. El cambio queda con su "
+                    + "instante exacto, la zona de origen, el motivo opcional y el usuario; las entregas anteriores conservan "
+                    + "la zona que tenían."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Zona reasignada",
@@ -219,7 +221,8 @@ public class ProveedorController {
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ProveedorAdminResponse> reasignarZona(
             @Parameter(description = "Id del proveedor") @PathVariable UUID id,
-            @Parameter(description = "Id de la nueva zona") @RequestParam UUID zonaId) {
-        return ResponseEntity.ok(proveedorService.reasignarZona(id, zonaId));
+            @Parameter(description = "Id de la nueva zona") @RequestParam UUID zonaId,
+            @Parameter(description = "Motivo del cambio (opcional, hasta 200 caracteres)") @RequestParam(required = false) String motivo) {
+        return ResponseEntity.ok(proveedorService.reasignarZona(id, zonaId, motivo));
     }
 }

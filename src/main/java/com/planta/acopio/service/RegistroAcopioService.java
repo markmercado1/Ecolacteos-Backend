@@ -51,6 +51,7 @@ public class RegistroAcopioService {
     private final AnomaliaService anomaliaService;
     private final LoteProduccionRepository loteProduccionRepository;
     private final JornadaRepository jornadaRepository;
+    private final ZonaHistoricaService zonaHistoricaService;
 
     private final long toleranciaDiasAtras;
     private final long toleranciaMinutosAdelante;
@@ -64,6 +65,7 @@ public class RegistroAcopioService {
             AnomaliaService anomaliaService,
             LoteProduccionRepository loteProduccionRepository,
             JornadaRepository jornadaRepository,
+            ZonaHistoricaService zonaHistoricaService,
             @Value("${app.registro-acopio.tolerancia-dias-atras}") long toleranciaDiasAtras,
             @Value("${app.registro-acopio.tolerancia-minutos-adelante}") long toleranciaMinutosAdelante) {
         this.repository = repository;
@@ -74,6 +76,7 @@ public class RegistroAcopioService {
         this.anomaliaService = anomaliaService;
         this.loteProduccionRepository = loteProduccionRepository;
         this.jornadaRepository = jornadaRepository;
+        this.zonaHistoricaService = zonaHistoricaService;
         this.toleranciaDiasAtras = toleranciaDiasAtras;
         this.toleranciaMinutosAdelante = toleranciaMinutosAdelante;
     }
@@ -119,6 +122,9 @@ public class RegistroAcopioService {
         registro.setLitrosPorVoz(Boolean.TRUE.equals(dto.litrosPorVoz()));
         registro.setFotoUrl(dto.fotoUrl());
         registro.setSincronizadoEn(LocalDateTime.now());
+        // La entrega conserva la zona que tenia el proveedor cuando se hizo (fechaHora), aunque se sincronice despues
+        // de un cambio de zona. Sin periodo claro queda sin zona: nunca se usa la zona actual como relleno.
+        zonaHistoricaService.zonaEn(proveedor.getId(), dto.fechaHora()).ifPresent(registro::setZona);
 
         if (dto.motivoObservacionId() != null) {
             MotivoObservacion motivo = motivoObservacionRepository.findById(dto.motivoObservacionId())

@@ -7,18 +7,27 @@ import com.planta.acopio.dto.ProveedorRequest;
 import com.planta.acopio.dto.ProveedorUpdateRequest;
 import com.planta.acopio.entity.HistorialZona;
 import com.planta.acopio.entity.Proveedor;
+import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.entity.Zona;
 import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
+import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.HistorialZonaRepository;
 import com.planta.acopio.repository.ProveedorRepository;
+import com.planta.acopio.repository.UsuarioRepository;
 import com.planta.acopio.repository.ZonaRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.Clock;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 
@@ -28,12 +37,25 @@ public class ProveedorService {
     private final ProveedorRepository proveedorRepository;
     private final ZonaRepository zonaRepository;
     private final HistorialZonaRepository historialZonaRepository;
+    private final UsuarioRepository usuarioRepository;
+    private final Clock reloj;
 
+    private static final int MAX_MOTIVO = 200;
+
+    @Autowired
     public ProveedorService(ProveedorRepository proveedorRepository, ZonaRepository zonaRepository,
-                             HistorialZonaRepository historialZonaRepository) {
+                             HistorialZonaRepository historialZonaRepository, UsuarioRepository usuarioRepository) {
+        this(proveedorRepository, zonaRepository, historialZonaRepository, usuarioRepository,
+                Clock.system(ZoneId.of("America/Lima")));
+    }
+
+    ProveedorService(ProveedorRepository proveedorRepository, ZonaRepository zonaRepository,
+                     HistorialZonaRepository historialZonaRepository, UsuarioRepository usuarioRepository, Clock reloj) {
         this.proveedorRepository = proveedorRepository;
         this.zonaRepository = zonaRepository;
         this.historialZonaRepository = historialZonaRepository;
+        this.usuarioRepository = usuarioRepository;
+        this.reloj = reloj;
     }
 
     @Transactional
@@ -53,7 +75,7 @@ public class ProveedorService {
                     .orElseThrow(() -> new RecursoNoEncontradoException("Zona no encontrada: " + dto.zonaActualId()));
             proveedor.setZonaActual(zona);
             proveedor = proveedorRepository.save(proveedor);
-            abrirHistorialZona(proveedor, zona);
+            abrirHistorialZona(proveedor, zona, null, "Alta del proveedor", LocalDateTime.now(reloj));
         } else {
             proveedor = proveedorRepository.save(proveedor);
         }
@@ -64,18 +86,31 @@ public class ProveedorService {
     // Flujo de negocio (CORE_DESIGN.md §11, hallazgo 3.4): reasignar zona no es
     // un simple UPDATE -- cierra el periodo de HistorialZona abierto (si existe)
     // antes de abrir uno nuevo, para que nunca queden dos periodos activos.
+    //
+    // Fase A: el cambio queda con su INSTANTE (America/Lima), la zona de la que venia, el motivo y quien lo hizo. El
+    // periodo anterior termina exactamente cuando empieza el nuevo, asi que varios cambios el mismo dia son validos y
+    // la zona de una entrega se puede decidir por hora. Antes el periodo viejo se cerraba con hasta = hoy - 1, que
+    // quedaba invertido (hasta < desde) si el periodo se habia abierto hoy. Se bloquea la fila del proveedor para que
+    // dos cambios simultaneos se apliquen uno tras otro.
     @Transactional
-    public ProveedorAdminResponse reasignarZona(UUID proveedorId, UUID nuevaZonaId) {
-        Proveedor proveedor = proveedorRepository.findById(proveedorId)
+    public ProveedorAdminResponse reasignarZona(UUID proveedorId, UUID nuevaZonaId, String motivo) {
+        String motivoLimpio = motivo == null || motivo.isBlank() ? null : motivo.trim();
+        if (motivoLimpio != null && motivoLimpio.length() > MAX_MOTIVO) {
+            throw new ValidacionNegocioException("El motivo no puede superar " + MAX_MOTIVO + " caracteres");
+        }
+        Proveedor proveedor = proveedorRepository.findByIdParaActualizar(proveedorId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Proveedor no encontrado: " + proveedorId));
         Zona nuevaZona = zonaRepository.findById(nuevaZonaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Zona no encontrada: " + nuevaZonaId));
 
-        historialZonaRepository.findByProveedorIdAndHastaIsNull(proveedorId)
-                .ifPresent(periodoAbierto -> periodoAbierto.setHasta(LocalDate.now().minusDays(1)));
+        LocalDateTime ahora = LocalDateTime.now(reloj);
+        Zona zonaAnterior = proveedor.getZonaActual();
+        historialZonaRepository.findByProveedorIdAndFinEnIsNull(proveedorId)
+                .ifPresent(periodoAbierto -> cerrarPeriodo(periodoAbierto, ahora));
+        historialZonaRepository.flush(); // el indice unico parcial exige cerrar el abierto antes de insertar el nuevo
 
         proveedor.setZonaActual(nuevaZona);
-        abrirHistorialZona(proveedor, nuevaZona);
+        abrirHistorialZona(proveedor, nuevaZona, zonaAnterior, motivoLimpio, ahora);
 
         return toAdminResponse(proveedor);
     }
@@ -157,7 +192,12 @@ public class ProveedorService {
         }
         return historialZonaRepository.findByProveedorIdOrderByDesdeDesc(proveedorId).stream()
                 .map(h -> new HistorialZonaResponse(
-                        h.getId(), h.getZona().getId(), h.getZona().getNombre(), h.getDesde(), h.getHasta()))
+                        h.getId(), h.getZona().getId(), h.getZona().getNombre(), h.getDesde(), h.getHasta(),
+                        h.getInicioEn(), h.getFinEn(),
+                        h.getZonaOrigen() != null ? h.getZonaOrigen().getNombre() : null,
+                        h.getMotivo(),
+                        h.getUsuario() != null ? h.getUsuario().getNombre() : null,
+                        Boolean.TRUE.equals(h.getRequiereRevision()), h.getNotaRevision()))
                 .toList();
     }
 
@@ -172,12 +212,33 @@ public class ProveedorService {
                 .map(this::toPublicoResponse).toList();
     }
 
-    private void abrirHistorialZona(Proveedor proveedor, Zona zona) {
+    private void cerrarPeriodo(HistorialZona periodo, LocalDateTime ahora) {
+        LocalDateTime fin = ahora.isBefore(periodo.getInicioEn()) ? periodo.getInicioEn() : ahora;
+        periodo.setFinEn(fin);
+        // hasta = ultimo DIA completo del periodo (como antes), pero nunca anterior a desde
+        LocalDate ultimoDiaCompleto = fin.toLocalDate().minusDays(1);
+        periodo.setHasta(ultimoDiaCompleto.isBefore(periodo.getDesde()) ? periodo.getDesde() : ultimoDiaCompleto);
+    }
+
+    private void abrirHistorialZona(Proveedor proveedor, Zona zona, Zona zonaOrigen, String motivo, LocalDateTime ahora) {
         HistorialZona historial = new HistorialZona();
         historial.setProveedor(proveedor);
         historial.setZona(zona);
-        historial.setDesde(LocalDate.now());
+        historial.setZonaOrigen(zonaOrigen);
+        historial.setDesde(ahora.toLocalDate());
+        historial.setInicioEn(ahora);
+        historial.setMotivo(motivo);
+        historial.setUsuario(usuarioActual());
         historialZonaRepository.save(historial);
+    }
+
+    // El cambio de zona lo hace una persona autenticada; fuera de una peticion (pruebas, tareas internas) queda sin usuario.
+    private Usuario usuarioActual() {
+        Authentication autenticacion = SecurityContextHolder.getContext().getAuthentication();
+        if (autenticacion == null || autenticacion.getName() == null) {
+            return null;
+        }
+        return usuarioRepository.findByEmail(autenticacion.getName()).orElse(null);
     }
 
     private ProveedorAdminResponse toAdminResponse(Proveedor p) {
