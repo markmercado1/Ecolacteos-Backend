@@ -37,6 +37,15 @@ public class AjustePago {
     @Column(name = "precio_litro", nullable = false, precision = 6, scale = 3)
     private BigDecimal precioLitro;
 
+    // Fase B: litros que el pago ya tenia en cuenta para esta entrega justo antes de este ajuste (base del siguiente).
+    @Column(name = "litros_contabilizados_antes", precision = 8, scale = 2)
+    private BigDecimal litrosContabilizadosAntes;
+
+    // Fase B: precio congelado al liquidar el ajuste; mientras esta PENDIENTE es null y el ajuste se valora al precio
+    // efectivo del pago (precio_litro es el de cuando se creo, solo informativo).
+    @Column(name = "precio_liquidado", precision = 6, scale = 3)
+    private BigDecimal precioLitroLiquidado;
+
     // Columna generada por PostgreSQL (STORED) -- solo lectura desde JPA.
     @Column(insertable = false, updatable = false, precision = 10, scale = 2)
     private BigDecimal monto;
@@ -66,6 +75,10 @@ public class AjustePago {
     public void setLitrosDiferencia(BigDecimal litrosDiferencia) { this.litrosDiferencia = litrosDiferencia; }
     public BigDecimal getPrecioLitro() { return precioLitro; }
     public void setPrecioLitro(BigDecimal precioLitro) { this.precioLitro = precioLitro; }
+    public BigDecimal getLitrosContabilizadosAntes() { return litrosContabilizadosAntes; }
+    public void setLitrosContabilizadosAntes(BigDecimal litrosContabilizadosAntes) { this.litrosContabilizadosAntes = litrosContabilizadosAntes; }
+    public BigDecimal getPrecioLitroLiquidado() { return precioLitroLiquidado; }
+    public void setPrecioLitroLiquidado(BigDecimal precioLitroLiquidado) { this.precioLitroLiquidado = precioLitroLiquidado; }
     public BigDecimal getMonto() { return monto; }
     public EstadoAjustePago getEstado() { return estado; }
     public void setEstado(EstadoAjustePago estado) { this.estado = estado; }

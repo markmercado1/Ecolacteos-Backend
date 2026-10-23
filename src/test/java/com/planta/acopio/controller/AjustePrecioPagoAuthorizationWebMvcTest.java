@@ -8,6 +8,7 @@ import com.planta.acopio.dto.AjustePrecioPagoResponse;
 import com.planta.acopio.service.AjustePagoService;
 import com.planta.acopio.service.AjustePrecioPagoService;
 import com.planta.acopio.service.BoletaPagoService;
+import com.planta.acopio.service.LineaPagoService;
 import com.planta.acopio.service.PagoService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -43,6 +44,7 @@ class AjustePrecioPagoAuthorizationWebMvcTest {
     @MockBean private AjustePagoService ajustePagoService;
     @MockBean private AjustePrecioPagoService ajustePrecioPagoService;
     @MockBean private BoletaPagoService boletaPagoService;
+    @MockBean private LineaPagoService lineaPagoService;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 

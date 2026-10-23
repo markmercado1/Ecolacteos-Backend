@@ -60,6 +60,7 @@ class PaginacionPendienteWebMvcTest {
     @MockBean private AjustePagoService ajustePagoService;
     @MockBean private AjustePrecioPagoService ajustePrecioPagoService;
     @MockBean private BoletaPagoService boletaPagoService;
+    @MockBean private LineaPagoService lineaPagoService;
     @MockBean private ComunicadoService comunicadoService;
     @MockBean private RegistroAcopioService registroAcopioService;
     @MockBean private CorreccionRegistroService correccionRegistroService;
