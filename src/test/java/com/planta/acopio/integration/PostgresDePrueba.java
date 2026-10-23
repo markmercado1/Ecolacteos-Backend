@@ -39,15 +39,28 @@ final class PostgresDePrueba {
         }
     }
 
+    /** [url, usuario, clave] de una base NUEVA y vacia (sin esquema), para pruebas de migraciones que aplican Flyway a mano. */
+    static String[] baseNueva() {
+        if (ADMIN_URL != null && !ADMIN_URL.isBlank()) {
+            String base = crearBase();
+            return new String[]{ADMIN_URL.replaceFirst("/[^/?]*(\\?.*)?$", "/" + base), USUARIO, CLAVE};
+        }
+        return new String[]{Contenedor.POSTGRES.getJdbcUrl(), Contenedor.POSTGRES.getUsername(), Contenedor.POSTGRES.getPassword()};
+    }
+
+    private static String crearBase() {
+        String base = "eco_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
+        try (Connection c = DriverManager.getConnection(ADMIN_URL, USUARIO, CLAVE); Statement s = c.createStatement()) {
+            s.execute("CREATE DATABASE " + base);
+        } catch (SQLException e) {
+            throw new IllegalStateException("No se pudo crear la base de pruebas en " + ADMIN_URL, e);
+        }
+        return base;
+    }
+
     static void registrar(DynamicPropertyRegistry registry) {
         if (ADMIN_URL != null && !ADMIN_URL.isBlank()) {
-            String base = "eco_" + UUID.randomUUID().toString().replace("-", "").substring(0, 16);
-            try (Connection c = DriverManager.getConnection(ADMIN_URL, USUARIO, CLAVE);
-                 Statement s = c.createStatement()) {
-                s.execute("CREATE DATABASE " + base);
-            } catch (SQLException e) {
-                throw new IllegalStateException("No se pudo crear la base de pruebas en " + ADMIN_URL, e);
-            }
+            String base = crearBase();
             String url = ADMIN_URL.replaceFirst("/[^/?]*(\\?.*)?$", "/" + base);
             registry.add("spring.datasource.url", () -> url);
             registry.add("spring.datasource.username", () -> USUARIO);
