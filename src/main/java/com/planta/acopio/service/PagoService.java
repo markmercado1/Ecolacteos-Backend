@@ -3,6 +3,7 @@ package com.planta.acopio.service;
 import com.planta.acopio.dto.GenerarPagoRequest;
 import com.planta.acopio.dto.PagoResponse;
 import com.planta.acopio.entity.AjustePrecioPago;
+import com.planta.acopio.entity.LineaPago;
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.entity.PrecioLitro;
 import com.planta.acopio.entity.Proveedor;
@@ -11,6 +12,7 @@ import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.AjustePrecioPagoRepository;
+import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
 import com.planta.acopio.repository.PrecioLitroRepository;
 import com.planta.acopio.repository.ProveedorRepository;
@@ -46,16 +48,21 @@ public class PagoService {
     private final PrecioLitroRepository precioLitroRepository;
     private final AjustePrecioPagoRepository ajustePrecioRepository;
     private final EntityManager entityManager;
+    private final LineaPagoRepository lineaPagoRepository;
+    private final LitrosEfectivos litrosEfectivos;
 
     public PagoService(PagoRepository pagoRepository, ProveedorRepository proveedorRepository,
                         RegistroAcopioRepository registroAcopioRepository, PrecioLitroRepository precioLitroRepository,
-                        AjustePrecioPagoRepository ajustePrecioRepository, EntityManager entityManager) {
+                        AjustePrecioPagoRepository ajustePrecioRepository, EntityManager entityManager,
+                        LineaPagoRepository lineaPagoRepository, LitrosEfectivos litrosEfectivos) {
         this.pagoRepository = pagoRepository;
         this.proveedorRepository = proveedorRepository;
         this.registroAcopioRepository = registroAcopioRepository;
         this.precioLitroRepository = precioLitroRepository;
         this.ajustePrecioRepository = ajustePrecioRepository;
         this.entityManager = entityManager;
+        this.lineaPagoRepository = lineaPagoRepository;
+        this.litrosEfectivos = litrosEfectivos;
     }
 
     @Transactional
@@ -70,8 +77,9 @@ public class PagoService {
         LocalDateTime inicio = dto.semanaInicio().atStartOfDay();
         LocalDateTime fin = dto.semanaFin().atTime(LocalTime.MAX);
 
-        List<RegistroAcopio> registros = registroAcopioRepository
-                .findByProveedorIdAndFechaHoraBetween(dto.proveedorId(), inicio, fin);
+        // Fase B: las entregas del rango se bloquean (en orden estable) hasta el fin de la transaccion: una correccion o una segunda
+        // liquidacion simultaneas esperan, y el calculo de abajo ve las correcciones ya confirmadas.
+        List<RegistroAcopio> registros = registroAcopioRepository.findParaLiquidar(dto.proveedorId(), inicio, fin);
 
         if (registros.isEmpty()) {
             throw new ValidacionNegocioException(
@@ -92,8 +100,11 @@ public class PagoService {
                             + "liquidados en un pago anterior (ej. " + yaLiquidados.get(0) + "); ajuste el rango de fechas");
         }
 
+        // Fase B: se liquidan los litros EFECTIVOS (original + ultima correccion valida), sin sobrescribir el registro. Cada linea
+        // conserva lo efectivamente liquidado; pago.litros_totales es la suma de las lineas.
+        Map<UUID, LitrosEfectivos.Efectivo> efectivos = litrosEfectivos.deRegistros(registros);
         BigDecimal litrosTotales = registros.stream()
-                .map(RegistroAcopio::getLitros)
+                .map(r -> efectivos.get(r.getId()).litros())
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
         PrecioLitro precioVigente = precioLitroRepository.findVigenteHoy()
@@ -113,6 +124,19 @@ public class PagoService {
         // ConciliacionService con diferencia_pct).
         entityManager.flush();
         entityManager.refresh(pago);
+
+        Pago pagoGuardado = pago;
+        lineaPagoRepository.saveAll(registros.stream().map(r -> {
+            LitrosEfectivos.Efectivo efectivo = efectivos.get(r.getId());
+            LineaPago linea = new LineaPago();
+            linea.setPago(pagoGuardado);
+            linea.setRegistroAcopio(r);
+            linea.setLitrosOriginales(r.getLitros());
+            linea.setLitrosLiquidados(efectivo.litros());
+            linea.setPrecioBase(precioVigente.getPrecio());
+            linea.setCorreccionAplicada(efectivo.correccion());
+            return linea;
+        }).toList());
 
         return toResponse(pago);
     }

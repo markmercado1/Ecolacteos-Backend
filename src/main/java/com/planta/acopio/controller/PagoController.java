@@ -4,11 +4,13 @@ import com.planta.acopio.dto.AjustePagoResponse;
 import com.planta.acopio.dto.AjustePrecioPagoRequest;
 import com.planta.acopio.dto.AjustePrecioPagoResponse;
 import com.planta.acopio.dto.GenerarPagoRequest;
+import com.planta.acopio.dto.LineaPagoResponse;
 import com.planta.acopio.dto.PaginaResponse;
 import com.planta.acopio.dto.PagoResponse;
 import com.planta.acopio.service.AjustePagoService;
 import com.planta.acopio.service.AjustePrecioPagoService;
 import com.planta.acopio.service.BoletaPagoService;
+import com.planta.acopio.service.LineaPagoService;
 import com.planta.acopio.service.PagoService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -41,13 +43,16 @@ public class PagoController {
     private final AjustePagoService ajustePagoService;
     private final AjustePrecioPagoService ajustePrecioPagoService;
     private final BoletaPagoService boletaPagoService;
+    private final LineaPagoService lineaPagoService;
 
     public PagoController(PagoService pagoService, AjustePagoService ajustePagoService,
-                          AjustePrecioPagoService ajustePrecioPagoService, BoletaPagoService boletaPagoService) {
+                          AjustePrecioPagoService ajustePrecioPagoService, BoletaPagoService boletaPagoService,
+                          LineaPagoService lineaPagoService) {
         this.pagoService = pagoService;
         this.ajustePagoService = ajustePagoService;
         this.ajustePrecioPagoService = ajustePrecioPagoService;
         this.boletaPagoService = boletaPagoService;
+        this.lineaPagoService = lineaPagoService;
     }
 
     @Operation(
@@ -145,6 +150,21 @@ public class PagoController {
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<List<AjustePagoResponse>> ajustesDePago(@Parameter(description = "Id del pago") @PathVariable UUID id) {
         return ResponseEntity.ok(ajustePagoService.listarPorPago(id));
+    }
+
+    // Fase B: detalle por entrega de un pago. Sin datos personales del proveedor (RNF-12): lo lee tambien RECEPCION.
+    @Operation(summary = "Entregas liquidadas en un pago", description = "Rol requerido: ADMIN o RECEPCION. Por cada entrega del pago: litros "
+            + "originales (recibidos, inmutables), litros liquidados (original + última corrección válida al generar el pago), litros "
+            + "contabilizados (liquidados + ajustes de litros posteriores), litros efectivos actuales, precio base y precio aplicado hoy "
+            + "(incluye los ajustes de calidad del pago).")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Entregas del pago", content = @Content(array = @ArraySchema(schema = @Schema(implementation = LineaPagoResponse.class)))),
+            @ApiResponse(responseCode = "404", description = "No existe un pago con ese id")
+    })
+    @GetMapping("/{id}/lineas")
+    @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
+    public ResponseEntity<List<LineaPagoResponse>> lineasDePago(@Parameter(description = "Id del pago") @PathVariable UUID id) {
+        return ResponseEntity.ok(lineaPagoService.listarPorPago(id));
     }
 
     // Ajuste del precio por litro de UN pago (V24). El pago original no se modifica; el cambio queda en el historial

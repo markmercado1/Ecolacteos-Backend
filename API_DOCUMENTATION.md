@@ -264,6 +264,33 @@ Migración `V27__zonas_historicas.sql` (solo aditiva). La zona de una **entrega*
 - **`GET /api/admin/zonas/revision`** (solo ADMIN, solo lectura): periodos marcados y entregas sin zona (primeras 500 + `totalEntregasSinZona`), con motivo
   `DIA_DE_CAMBIO`, `SIN_PERIODO` u `OTRO`. No corrige nada: la resolución de cada caso es una decisión manual pendiente.
 
+## 10. Litros efectivos y ajustes posteriores (Fase B de la auditoría de pagos/historial/IGV)
+
+Migración `V28__litros_efectivos.sql` (solo aditiva). Principios: los **litros reales recibidos** (`registro_acopio.litros`) **no se sobrescriben**; la cantidad solo cambia
+con una **corrección justificada y registrada**; la **calidad ajusta el precio por litro, nunca los litros**.
+
+- **Litros efectivos de una entrega** = `litrosCorregido` de la última corrección **válida** (con motivo) o, si no tiene, el original. Se derivan; el registro no se toca.
+- **`POST /api/registros-acopio/{id}/correcciones`** (CALIDAD o ADMIN): `motivo` es **obligatorio** (texto libre; 400 si falta o es solo espacios) y la cantidad debe
+  **cambiar** respecto de la vigente (la última corrección válida o el original; 400 si es igual tras redondear a 2 decimales). El registro se bloquea durante la
+  operación: dos correcciones simultáneas se aplican una tras otra.
+- **`POST /api/pagos/generar`** liquida los **litros efectivos** (antes liquidaba siempre el original, así que una corrección previa a liquidar no llegaba al pago). Las
+  entregas del rango se bloquean mientras se genera; una entrega pertenece a lo sumo a un pago (`UNIQUE`). `PagoResponse` no cambia.
+- **Líneas de liquidación (`pago_linea`).** Cada entrega liquidada conserva `litros_originales` (copia de auditoría), `litros_liquidados`, `precio_base` y la última
+  corrección aplicada. `pago.litros_totales` es la suma de sus líneas. **`GET /api/pagos/{id}/lineas`** (ADMIN, RECEPCION; sin datos personales) devuelve por entrega:
+  `litrosOriginales`, `litrosLiquidados`, `litrosContabilizados` (liquidados + ajustes posteriores), `litrosEfectivosActuales`, `precioBase`, `precioAplicado` y
+  `correccionAplicadaId`.
+- **Corrección posterior a la liquidación** → `AjustePago` = `litrosCorregido` − `litrosContabilizados` (lo liquidado más los ajustes previos de esa entrega), no contra el
+  original. No se crea si no hay diferencia.
+- **Valoración: precio efectivamente aplicado.** El ajuste se valora con el precio del pago **incluidos los ajustes de calidad** (`AjustePrecioPago`, de un pago completo, que
+  se atribuye a todas las entregas de ese pago desde que se creó). Un ajuste **PENDIENTE** sigue al precio efectivo actual del pago; al **liquidarlo**
+  (`PATCH /api/pagos/ajustes/{id}/liquidar`) el precio queda congelado (`precio_liquidado`). En `AjustePagoResponse`, `precioLitro` y `monto` son los **vigentes**; los campos
+  aditivos `precioLitroAlCrear` y `montoAlCrear` conservan los del momento de la creación. Ejemplo: 100 L, corrección previa a 90, posterior a 85 y ajuste de calidad
+  1,00 → 0,90: total del pago 90 × 0,90 = 81,00 y ajuste −5 × 0,90 = −4,50, neto 76,50 = 85 × 0,90.
+- **Datos anteriores.** La migración crea una línea por entrega ya liquidada (`litros_liquidados` = el litro registrado, que coincide con `pago.litros_totales`; si algún pago
+  no suma, la migración **se detiene** sin cambiar nada). `litros_originales` toma la primera `litros_anterior` de la entrega si fue corregida. **No** modifica `registro_acopio`,
+  `pago`, `correccion_registro` ni los ajustes existentes (solo agrega la base y, en los ya liquidados, el precio congelado).
+- Sin cambios en los contratos de la app móvil.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*

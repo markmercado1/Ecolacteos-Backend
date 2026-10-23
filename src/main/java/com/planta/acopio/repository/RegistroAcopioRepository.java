@@ -2,9 +2,11 @@ package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.service.BusquedaTexto;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
@@ -53,6 +55,17 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
     @Query(value = "SELECT r FROM RegistroAcopio r WHERE r.zona IS NULL ORDER BY r.proveedor.nombre, r.fechaHora",
            countQuery = "SELECT count(r) FROM RegistroAcopio r WHERE r.zona IS NULL")
     Page<RegistroAcopio> findSinZona(Pageable pageable);
+
+    // Fase B: corregir o liquidar una entrega bloquea su fila hasta el fin de la transaccion, asi dos correcciones (o una correccion y
+    // una liquidacion) simultaneas se aplican una tras otra y nunca leen la misma base.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM RegistroAcopio r WHERE r.id = :id")
+    Optional<RegistroAcopio> findByIdParaActualizar(@Param("id") UUID id);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT r FROM RegistroAcopio r WHERE r.proveedor.id = :proveedorId AND r.fechaHora BETWEEN :inicio AND :fin ORDER BY r.id")
+    List<RegistroAcopio> findParaLiquidar(@Param("proveedorId") UUID proveedorId, @Param("inicio") LocalDateTime inicio,
+                                          @Param("fin") LocalDateTime fin);
 
     // Base de la liquidacion semanal (PagoService)
     List<RegistroAcopio> findByProveedorIdAndFechaHoraBetween(UUID proveedorId, LocalDateTime inicio, LocalDateTime fin);

@@ -39,6 +39,8 @@ class PagoServiceTest {
     @Mock private PrecioLitroRepository precioLitroRepository;
     @Mock private AjustePrecioPagoRepository ajustePrecioRepository;
     @Mock private EntityManager entityManager;
+    @Mock private LineaPagoRepository lineaPagoRepository;
+    @Mock private LitrosEfectivos litrosEfectivos;
 
     private PagoService service;
     private final UUID proveedorId = UUID.randomUUID();
@@ -46,7 +48,8 @@ class PagoServiceTest {
     @BeforeEach
     void setUp() {
         service = new PagoService(pagoRepository, proveedorRepository, registroAcopioRepository,
-                precioLitroRepository, ajustePrecioRepository, entityManager);
+                precioLitroRepository, ajustePrecioRepository, entityManager,
+                lineaPagoRepository, litrosEfectivos);
     }
 
     @Test
@@ -66,7 +69,7 @@ class PagoServiceTest {
         var dto = new GenerarPagoRequest(proveedorId, LocalDate.of(2026, 3, 2), LocalDate.of(2026, 3, 8));
         when(pagoRepository.findByProveedorIdAndSemanaInicio(proveedorId, dto.semanaInicio())).thenReturn(Optional.empty());
         when(proveedorRepository.findById(proveedorId)).thenReturn(Optional.of(proveedorConId()));
-        when(registroAcopioRepository.findByProveedorIdAndFechaHoraBetween(eq(proveedorId), any(), any()))
+        when(registroAcopioRepository.findParaLiquidar(eq(proveedorId), any(), any()))
                 .thenReturn(List.of());
 
         assertThatThrownBy(() -> service.generar(dto))
@@ -81,7 +84,7 @@ class PagoServiceTest {
 
         RegistroAcopio r1 = registroCon(BigDecimal.valueOf(40));
         RegistroAcopio r2 = registroCon(BigDecimal.valueOf(35));
-        when(registroAcopioRepository.findByProveedorIdAndFechaHoraBetween(eq(proveedorId), any(), any()))
+        when(registroAcopioRepository.findParaLiquidar(eq(proveedorId), any(), any()))
                 .thenReturn(List.of(r1, r2));
 
         PrecioLitro precio = new PrecioLitro();
@@ -89,6 +92,9 @@ class PagoServiceTest {
         when(precioLitroRepository.findVigenteHoy()).thenReturn(Optional.of(precio));
 
         when(pagoRepository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
+        when(litrosEfectivos.deRegistros(any())).thenReturn(java.util.Map.of(
+                r1.getId(), new LitrosEfectivos.Efectivo(r1.getLitros(), null),
+                r2.getId(), new LitrosEfectivos.Efectivo(r2.getLitros(), null)));
 
         service.generar(dto);
 
@@ -98,6 +104,54 @@ class PagoServiceTest {
         Pago guardado = captor.getValue();
         assertThat(guardado.getLitrosTotales()).isEqualByComparingTo(BigDecimal.valueOf(75));
         assertThat(guardado.getRegistrosLiquidados()).containsExactlyInAnyOrder(r1, r2); // mejora #4
+    }
+
+    // Fase B: se liquidan los litros EFECTIVOS (ultima correccion valida), sin tocar el registro. Original 100 corregido a 90 antes
+    // de liquidar: se pagan 90, la linea guarda original 100 / liquidado 90 / la correccion aplicada, y el registro sigue en 100.
+    @Test
+    void liquidaLosLitrosEfectivosDeLasCorreccionesPreviasYCadaLineaConservaLoLiquidado() {
+        var dto = new GenerarPagoRequest(proveedorId, LocalDate.of(2026, 3, 2), LocalDate.of(2026, 3, 8));
+        when(pagoRepository.findByProveedorIdAndSemanaInicio(proveedorId, dto.semanaInicio())).thenReturn(Optional.empty());
+        when(proveedorRepository.findById(proveedorId)).thenReturn(Optional.of(proveedorConId()));
+
+        RegistroAcopio corregido = registroCon(BigDecimal.valueOf(100));
+        RegistroAcopio sinCorregir = registroCon(BigDecimal.valueOf(40));
+        when(registroAcopioRepository.findParaLiquidar(eq(proveedorId), any(), any())).thenReturn(List.of(corregido, sinCorregir));
+
+        CorreccionRegistro correccion = new CorreccionRegistro();
+        correccion.setId(UUID.randomUUID());
+        correccion.setLitrosCorregido(BigDecimal.valueOf(90));
+        when(litrosEfectivos.deRegistros(any())).thenReturn(java.util.Map.of(
+                corregido.getId(), new LitrosEfectivos.Efectivo(BigDecimal.valueOf(90), correccion),
+                sinCorregir.getId(), new LitrosEfectivos.Efectivo(BigDecimal.valueOf(40), null)));
+
+        PrecioLitro precio = new PrecioLitro();
+        precio.setPrecio(BigDecimal.valueOf(1.5));
+        when(precioLitroRepository.findVigenteHoy()).thenReturn(Optional.of(precio));
+        when(pagoRepository.save(any(Pago.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.generar(dto);
+
+        ArgumentCaptor<Pago> pagoCaptor = ArgumentCaptor.forClass(Pago.class);
+        verify(pagoRepository).save(pagoCaptor.capture());
+        assertThat(pagoCaptor.getValue().getLitrosTotales()).isEqualByComparingTo(BigDecimal.valueOf(130)); // 90 + 40, no 140
+        assertThat(corregido.getLitros()).isEqualByComparingTo(BigDecimal.valueOf(100)); // el registro original no se toca
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Iterable<LineaPago>> lineasCaptor = ArgumentCaptor.forClass(Iterable.class);
+        verify(lineaPagoRepository).saveAll(lineasCaptor.capture());
+        List<LineaPago> lineas = new java.util.ArrayList<>();
+        lineasCaptor.getValue().forEach(lineas::add);
+        assertThat(lineas).hasSize(2);
+        LineaPago lineaCorregida = lineas.stream().filter(l -> l.getRegistroAcopio() == corregido).findFirst().orElseThrow();
+        assertThat(lineaCorregida.getLitrosOriginales()).isEqualByComparingTo(BigDecimal.valueOf(100));
+        assertThat(lineaCorregida.getLitrosLiquidados()).isEqualByComparingTo(BigDecimal.valueOf(90));
+        assertThat(lineaCorregida.getPrecioBase()).isEqualByComparingTo(BigDecimal.valueOf(1.5));
+        assertThat(lineaCorregida.getCorreccionAplicada()).isSameAs(correccion);
+        LineaPago lineaSinCorregir = lineas.stream().filter(l -> l.getRegistroAcopio() == sinCorregir).findFirst().orElseThrow();
+        assertThat(lineaSinCorregir.getLitrosLiquidados()).isEqualByComparingTo(BigDecimal.valueOf(40));
+        assertThat(lineaSinCorregir.getCorreccionAplicada()).isNull();
+        assertThat(lineas).allSatisfy(l -> assertThat(l.getPago()).isSameAs(pagoCaptor.getValue()));
     }
 
     // Segunda auditoria (flujos end-to-end §6/§14-G): un rango con otra
@@ -111,7 +165,7 @@ class PagoServiceTest {
 
         RegistroAcopio r1 = registroCon(BigDecimal.valueOf(40));
         RegistroAcopio r2 = registroCon(BigDecimal.valueOf(35)); // este ya esta en otro pago
-        when(registroAcopioRepository.findByProveedorIdAndFechaHoraBetween(eq(proveedorId), any(), any()))
+        when(registroAcopioRepository.findParaLiquidar(eq(proveedorId), any(), any()))
                 .thenReturn(List.of(r1, r2));
 
         when(pagoRepository.existeRegistroYaLiquidado(r1.getId())).thenReturn(false);

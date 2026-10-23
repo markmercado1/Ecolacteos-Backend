@@ -12,8 +12,13 @@ public record AjustePagoResponse(
     UUID registroAcopioId,
     UUID correccionRegistroId,
     BigDecimal litrosDiferencia,
+    // Precio y monto VIGENTES (Fase B): mientras el ajuste esta PENDIENTE siguen al precio efectivo del pago (incluidos los ajustes
+    // de calidad); al liquidarlo quedan congelados.
     BigDecimal precioLitro,
     BigDecimal monto,
     String estado,
-    LocalDateTime creadoEn
+    LocalDateTime creadoEn,
+    // Campos aditivos: precio y monto con los que se creo el ajuste.
+    BigDecimal precioLitroAlCrear,
+    BigDecimal montoAlCrear
 ) {}

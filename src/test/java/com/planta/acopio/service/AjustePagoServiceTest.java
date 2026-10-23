@@ -3,11 +3,13 @@ package com.planta.acopio.service;
 import com.planta.acopio.entity.AjustePago;
 import com.planta.acopio.entity.CorreccionRegistro;
 import com.planta.acopio.entity.EstadoAjustePago;
+import com.planta.acopio.entity.LineaPago;
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.AjustePagoRepository;
+import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -17,30 +19,37 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.*;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
-// Fase 3, decision de negocio 1 (opcion C, confirmada): una correccion
-// post-liquidacion NUNCA modifica Pago ni RegistroAcopio (ambos siguen
-// inmutables) -- genera un ajuste separado, valorizado SIEMPRE al precio del
-// Pago original (no el vigente al momento de la correccion), con liquidacion
-// manual (nunca se pliega automaticamente en un pago nuevo).
+// Fase 3, decision de negocio 1 (opcion C, confirmada): una correccion post-liquidacion NUNCA modifica Pago ni RegistroAcopio
+// (ambos siguen inmutables) -- genera un ajuste separado, con liquidacion manual (nunca se pliega automaticamente en un pago nuevo).
+//
+// Fase B: el ajuste parte de los litros CONTABILIZADOS de la entrega (liquidados + ajustes previos) y se valora al precio
+// efectivamente aplicado (incluye los ajustes de calidad del pago); PENDIENTE sigue al precio del pago, LIQUIDADO queda congelado.
 @ExtendWith(MockitoExtension.class)
 class AjustePagoServiceTest {
 
     @Mock private AjustePagoRepository repository;
     @Mock private PagoRepository pagoRepository;
+    @Mock private LineaPagoRepository lineaPagoRepository;
+    @Mock private PrecioAplicado precioAplicado;
 
     private AjustePagoService service;
 
     @BeforeEach
     void setUp() {
-        service = new AjustePagoService(repository, pagoRepository);
+        service = new AjustePagoService(repository, pagoRepository, lineaPagoRepository, precioAplicado);
     }
 
     @Test
@@ -55,91 +64,170 @@ class AjustePagoServiceTest {
     }
 
     @Test
-    void generaAjusteAlPrecioDelPagoOriginalCuandoElRegistroYaEstabaLiquidado() {
+    void generaAjusteContraLosLitrosLiquidadosAlPrecioEfectivoDelPago() {
         RegistroAcopio registro = registroCon(BigDecimal.valueOf(40));
-        CorreccionRegistro correccion = correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)); // corregido a la baja
-        Pago pago = pagoConPrecio(BigDecimal.valueOf(1.8)); // precio de ESE pago, no el "vigente hoy"
+        Pago pago = pagoConPrecio(BigDecimal.valueOf(1.8));
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
-        // Primera correccion sobre este registro: sin ajuste previo -> el
-        // baseline cae al litro original (40), igual que antes del fix.
-        when(repository.findFirstByRegistroAcopio_IdOrderByCreadoEnDesc(registro.getId())).thenReturn(Optional.empty());
+        liquidada(registro, pago, 40, 40);
+        when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.valueOf(1.8));
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        service.generarSiCorrespondeAjuste(registro, correccion);
+        service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)));
 
-        ArgumentCaptor<AjustePago> captor = ArgumentCaptor.forClass(AjustePago.class);
-        verify(repository).save(captor.capture());
-        AjustePago guardado = captor.getValue();
+        AjustePago guardado = guardado();
         assertThat(guardado.getPago()).isEqualTo(pago);
         assertThat(guardado.getRegistroAcopio()).isEqualTo(registro);
-        assertThat(guardado.getCorreccionRegistro()).isEqualTo(correccion);
-        assertThat(guardado.getLitrosDiferencia()).isEqualByComparingTo(BigDecimal.valueOf(-5)); // 35 - 40
-        assertThat(guardado.getPrecioLitro()).isEqualByComparingTo(BigDecimal.valueOf(1.8)); // decision confirmada
+        assertThat(guardado.getLitrosContabilizadosAntes()).isEqualByComparingTo("40");
+        assertThat(guardado.getLitrosDiferencia()).isEqualByComparingTo("-5"); // 35 - 40
+        assertThat(guardado.getPrecioLitro()).isEqualByComparingTo("1.8");
         assertThat(guardado.getEstado()).isEqualTo(EstadoAjustePago.PENDIENTE);
     }
 
-    // Fix correcciones multiples (confirmado): una segunda correccion sobre el
-    // MISMO registro no debe volver a contar el tramo que el ajuste anterior
-    // ya cubrio. Ejemplo confirmado: original 40 -> corregido 35 (ajuste -5,
-    // ya generado) -> corregido 30 (este test): el nuevo ajuste debe ser
-    // -5 (30-35), NUNCA -10 (30-40) -- suma acumulada -10, nunca -15.
+    // El caso que antes se perdia: original 100, corregido a 90 ANTES de liquidar (se liquidaron 90). Una correccion posterior a 85
+    // ajusta -5 respecto de lo liquidado, no -15 respecto del original.
     @Test
-    void segundaCorreccionCalculaLaDiferenciaDesdeElUltimoValorCorregidoNoDesdeElOriginal() {
-        RegistroAcopio registro = registroCon(BigDecimal.valueOf(40));
-        Pago pago = pagoConPrecio(BigDecimal.valueOf(1.8));
+    void conUnaCorreccionPreviaALiquidarElAjusteParteDeLosLitrosLiquidadosNoDelOriginal() {
+        RegistroAcopio registro = registroCon(BigDecimal.valueOf(100));
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
-
-        AjustePago ajusteAnterior = new AjustePago();
-        ajusteAnterior.setCorreccionRegistro(correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)));
-        when(repository.findFirstByRegistroAcopio_IdOrderByCreadoEnDesc(registro.getId()))
-                .thenReturn(Optional.of(ajusteAnterior));
+        liquidada(registro, pago, 100, 90);
+        when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.ONE);
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
-        // litrosAnterior sigue siendo el original (40) -- CorreccionRegistro no cambia.
-        CorreccionRegistro segundaCorreccion = correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(30));
+        service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(100), BigDecimal.valueOf(85)));
 
-        service.generarSiCorrespondeAjuste(registro, segundaCorreccion);
-
-        ArgumentCaptor<AjustePago> captor = ArgumentCaptor.forClass(AjustePago.class);
-        verify(repository).save(captor.capture());
-        assertThat(captor.getValue().getLitrosDiferencia()).isEqualByComparingTo(BigDecimal.valueOf(-5)); // 30 - 35, no 30 - 40
+        assertThat(guardado().getLitrosContabilizadosAntes()).isEqualByComparingTo("90");
+        assertThat(guardado().getLitrosDiferencia()).isEqualByComparingTo("-5");
     }
 
-    // Responde directamente la pregunta de diseño: el ajuste anterior no se
-    // modifica ni cambia de estado al generarse uno nuevo -- solo se guarda
-    // (save) el ajuste nuevo, nunca se vuelve a tocar el anterior.
+    // Segunda correccion: original 40, liquidados 40, ya hubo un ajuste de -5 (35). Corregir a 30 suma -5 mas (nunca -10 ni -15).
     @Test
-    void noModificaElEstadoDelAjusteAnteriorAlGenerarUnoNuevo() {
+    void segundaCorreccionParteDeLosLitrosYaContabilizadosIncluidosLosAjustesPrevios() {
         RegistroAcopio registro = registroCon(BigDecimal.valueOf(40));
         Pago pago = pagoConPrecio(BigDecimal.valueOf(1.8));
         when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
-
-        AjustePago ajusteAnterior = new AjustePago();
-        ajusteAnterior.setCorreccionRegistro(correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)));
-        ajusteAnterior.setEstado(EstadoAjustePago.PENDIENTE);
-        when(repository.findFirstByRegistroAcopio_IdOrderByCreadoEnDesc(registro.getId()))
-                .thenReturn(Optional.of(ajusteAnterior));
+        liquidada(registro, pago, 40, 40);
+        when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.valueOf(-5));
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.valueOf(1.8));
         when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
 
         service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(30)));
 
-        assertThat(ajusteAnterior.getEstado()).isEqualTo(EstadoAjustePago.PENDIENTE); // sin cambios
-        verify(repository, times(1)).save(any(AjustePago.class)); // solo el nuevo, nunca el anterior
+        assertThat(guardado().getLitrosContabilizadosAntes()).isEqualByComparingTo("35");
+        assertThat(guardado().getLitrosDiferencia()).isEqualByComparingTo("-5"); // 30 - 35
     }
 
     @Test
-    void liquidarMarcaElAjusteComoLiquidado() {
-        AjustePago ajuste = ajusteConEstado(EstadoAjustePago.PENDIENTE);
+    void elAjusteSeCreaAlPrecioEfectivoQueIncluyeLosAjustesDeCalidadDelPago() {
+        RegistroAcopio registro = registroCon(BigDecimal.valueOf(90));
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
+        liquidada(registro, pago, 90, 90);
+        when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(new BigDecimal("0.900")); // el pago tiene un ajuste de calidad 1.00 -> 0.90
+        when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(90), BigDecimal.valueOf(85)));
+
+        assertThat(guardado().getPrecioLitro()).isEqualByComparingTo("0.90");
+    }
+
+    @Test
+    void noGeneraAjusteSiLaCorreccionNoCambiaLoContabilizado() {
+        RegistroAcopio registro = registroCon(BigDecimal.valueOf(40));
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
+        liquidada(registro, pago, 40, 40);
+        when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.ZERO);
+
+        service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(40)));
+
+        verify(repository, never()).save(any());
+    }
+
+    // Respaldo: un pago sin linea (no deberia existir tras V28) conserva el criterio anterior.
+    @Test
+    void sinLineaDePagoConservaElCriterioAnteriorDelUltimoAjuste() {
+        RegistroAcopio registro = registroCon(BigDecimal.valueOf(40));
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
+        when(lineaPagoRepository.findByRegistroAcopioId(registro.getId())).thenReturn(Optional.empty());
+        AjustePago anterior = new AjustePago();
+        anterior.setCorreccionRegistro(correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)));
+        when(repository.findFirstByRegistroAcopio_IdOrderByCreadoEnDesc(registro.getId())).thenReturn(Optional.of(anterior));
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.ONE);
+        when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(30)));
+
+        assertThat(guardado().getLitrosDiferencia()).isEqualByComparingTo("-5"); // 30 - 35
+    }
+
+    // Responde la pregunta de diseño: el ajuste anterior no se modifica al generarse uno nuevo.
+    @Test
+    void noModificaElEstadoDelAjusteAnteriorAlGenerarUnoNuevo() {
+        RegistroAcopio registro = registroCon(BigDecimal.valueOf(40));
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        when(pagoRepository.findByRegistroLiquidadoId(registro.getId())).thenReturn(Optional.of(pago));
+        liquidada(registro, pago, 40, 40);
+        when(repository.sumaLitrosDiferenciaDelRegistro(registro.getId())).thenReturn(BigDecimal.valueOf(-5));
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(BigDecimal.ONE);
+        when(repository.save(any(AjustePago.class))).thenAnswer(inv -> inv.getArgument(0));
+
+        service.generarSiCorrespondeAjuste(registro, correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(30)));
+
+        verify(repository, times(1)).save(any(AjustePago.class)); // solo el nuevo, nunca el anterior
+    }
+
+    // Ejemplo del negocio: ajuste de -5 L; el pago tiene un ajuste de calidad 1.00 -> 0.90. Pendiente: -5 x 0.90 = -4.50 (no -5.00).
+    @Test
+    void unAjustePendienteSeValoraAlPrecioEfectivoActualDelPago() {
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        AjustePago ajuste = ajusteConEstado(pago, EstadoAjustePago.PENDIENTE, BigDecimal.ONE);
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        when(precioAplicado.efectivosDePagos(any())).thenReturn(Map.of(pago.getId(), new BigDecimal("0.900")));
+        when(repository.findByPagoIdOrderByCreadoEnDesc(pago.getId())).thenReturn(List.of(ajuste));
+
+        var respuesta = service.listarPorPago(pago.getId()).get(0);
+
+        assertThat(respuesta.precioLitro()).isEqualByComparingTo("0.90");
+        assertThat(respuesta.monto()).isEqualByComparingTo("-4.50");
+        assertThat(respuesta.precioLitroAlCrear()).isEqualByComparingTo("1.00"); // lo que valia cuando se creo
+    }
+
+    @Test
+    void unAjusteLiquidadoConservaElPrecioCongelado() {
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        AjustePago ajuste = ajusteConEstado(pago, EstadoAjustePago.LIQUIDADO, BigDecimal.ONE);
+        ajuste.setPrecioLitroLiquidado(BigDecimal.ONE);
+        when(pagoRepository.findById(pago.getId())).thenReturn(Optional.of(pago));
+        when(precioAplicado.efectivosDePagos(any())).thenReturn(Map.of(pago.getId(), new BigDecimal("0.800"))); // el pago bajo despues
+        when(repository.findByPagoIdOrderByCreadoEnDesc(pago.getId())).thenReturn(List.of(ajuste));
+
+        var respuesta = service.listarPorPago(pago.getId()).get(0);
+
+        assertThat(respuesta.monto()).isEqualByComparingTo("-5.00"); // no cambia: ya se salda a 1.00
+    }
+
+    @Test
+    void liquidarCongelaElPrecioEfectivoDelMomentoYMarcaElAjusteComoLiquidado() {
+        Pago pago = pagoConPrecio(BigDecimal.ONE);
+        AjustePago ajuste = ajusteConEstado(pago, EstadoAjustePago.PENDIENTE, BigDecimal.ONE);
         when(repository.findById(ajuste.getId())).thenReturn(Optional.of(ajuste));
+        when(precioAplicado.efectivoDelPago(pago)).thenReturn(new BigDecimal("0.900"));
 
         var resultado = service.liquidar(ajuste.getId());
 
         assertThat(resultado.estado()).isEqualTo("LIQUIDADO");
+        assertThat(ajuste.getPrecioLitroLiquidado()).isEqualByComparingTo("0.90");
+        assertThat(resultado.monto()).isEqualByComparingTo("-4.50");
     }
 
     @Test
     void rechazaLiquidarUnAjusteQueYaEstabaLiquidado() {
-        AjustePago ajuste = ajusteConEstado(EstadoAjustePago.LIQUIDADO);
+        AjustePago ajuste = ajusteConEstado(pagoConPrecio(BigDecimal.ONE), EstadoAjustePago.LIQUIDADO, BigDecimal.ONE);
         when(repository.findById(ajuste.getId())).thenReturn(Optional.of(ajuste));
 
         assertThatThrownBy(() -> service.liquidar(ajuste.getId()))
@@ -149,10 +237,25 @@ class AjustePagoServiceTest {
     @Test
     void listarPorPagoRechazaSiElPagoNoExiste() {
         UUID pagoId = UUID.randomUUID();
-        when(pagoRepository.existsById(pagoId)).thenReturn(false);
+        when(pagoRepository.findById(pagoId)).thenReturn(Optional.empty());
 
         assertThatThrownBy(() -> service.listarPorPago(pagoId))
                 .isInstanceOf(RecursoNoEncontradoException.class);
+    }
+
+    private AjustePago guardado() {
+        ArgumentCaptor<AjustePago> captor = ArgumentCaptor.forClass(AjustePago.class);
+        verify(repository).save(captor.capture());
+        return captor.getValue();
+    }
+
+    private void liquidada(RegistroAcopio registro, Pago pago, int originales, int liquidados) {
+        LineaPago linea = new LineaPago();
+        linea.setPago(pago);
+        linea.setRegistroAcopio(registro);
+        linea.setLitrosOriginales(BigDecimal.valueOf(originales));
+        linea.setLitrosLiquidados(BigDecimal.valueOf(liquidados));
+        when(lineaPagoRepository.findByRegistroAcopioId(registro.getId())).thenReturn(Optional.of(linea));
     }
 
     private RegistroAcopio registroCon(BigDecimal litros) {
@@ -177,14 +280,14 @@ class AjustePagoServiceTest {
         return p;
     }
 
-    private AjustePago ajusteConEstado(EstadoAjustePago estado) {
+    private AjustePago ajusteConEstado(Pago pago, EstadoAjustePago estado, BigDecimal precioAlCrear) {
         AjustePago a = new AjustePago();
         a.setId(UUID.randomUUID());
-        a.setPago(pagoConPrecio(BigDecimal.valueOf(1.8)));
+        a.setPago(pago);
         a.setRegistroAcopio(registroCon(BigDecimal.valueOf(40)));
         a.setCorreccionRegistro(correccionCon(BigDecimal.valueOf(40), BigDecimal.valueOf(35)));
         a.setLitrosDiferencia(BigDecimal.valueOf(-5));
-        a.setPrecioLitro(BigDecimal.valueOf(1.8));
+        a.setPrecioLitro(precioAlCrear);
         a.setEstado(estado);
         return a;
     }
