@@ -15,6 +15,10 @@ public interface ProveedorRepository extends JpaRepository<Proveedor, UUID> {
     Optional<Proveedor> findByDni(String dni);
     Optional<Proveedor> findByCodigoQr(String codigoQr);
 
+    /** Importacion de Excel: de estos DNI, los que ya estan registrados (activos o no), en una sola consulta. */
+    @Query("SELECT p.dni FROM Proveedor p WHERE p.dni IN :dnis")
+    List<String> dnisExistentes(@Param("dnis") java.util.Collection<String> dnis);
+
     // Bloque 5 (confirmado): filtros opcionales combinables para el listado
     // ADMIN (distinto de listarPublico(), que ya filtra activo=true siempre
     // para el catalogo operativo). Sin parametros, mismo resultado que

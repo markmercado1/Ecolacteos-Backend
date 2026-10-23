@@ -94,6 +94,8 @@ public class SecurityConfig {
                 .map(String::trim).filter(s -> !s.isBlank()).toList());
         configuration.setAllowedMethods(List.of("GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"));
         configuration.setAllowedHeaders(List.of("Authorization", "Content-Type"));
+        // Descargas de Excel: el panel lee el nombre de archivo sugerido por el servidor.
+        configuration.setExposedHeaders(List.of("Content-Disposition"));
         configuration.setAllowCredentials(false);
 
         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();

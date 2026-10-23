@@ -14,6 +14,10 @@ public interface InsumoRepository extends JpaRepository<Insumo, UUID> {
     List<Insumo> findByActivoTrue();
     List<Insumo> findByActivoTrue(org.springframework.data.domain.Sort sort);
 
+    /** Importacion de Excel: nombres de TODOS los insumos (activos o no) para no crear duplicados. */
+    @Query("SELECT i.nombre FROM Insumo i")
+    List<String> todosLosNombres();
+
     // Consumo de insumos al producir (V18, recetas): descuento ATOMICO y condicionado en una sola sentencia
     // -- el UPDATE toma el bloqueo de fila, relee el stock ya confirmado por otras transacciones (READ
     // COMMITTED) y solo descuenta si alcanza. Devuelve 0 filas si el stock no alcanza en ese instante: quien

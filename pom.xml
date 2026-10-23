@@ -24,6 +24,7 @@
              (Jakarta EE, Spring Framework 6.1), segun la Compatibility Matrix
              oficial de springdoc-openapi. -->
         <springdoc.version>2.6.0</springdoc.version>
+        <poi.version>5.4.1</poi.version>
     </properties>
 
     <dependencies>
@@ -49,6 +50,15 @@
             <groupId>com.github.librepdf</groupId>
             <artifactId>openpdf</artifactId>
             <version>2.0.3</version>
+        </dependency>
+
+        <!-- Excel (.xlsx): exportacion de tablas e importacion de datos maestros con plantilla oficial.
+             Apache POI (licencia Apache 2.0). Se escribe en streaming (SXSSF) para no cargar exportaciones grandes
+             en memoria; la lectura de importaciones se acota en tamano, filas y descompresion (ver ExcelSeguro). -->
+        <dependency>
+            <groupId>org.apache.poi</groupId>
+            <artifactId>poi-ooxml</artifactId>
+            <version>${poi.version}</version>
         </dependency>
 
         <dependency>
