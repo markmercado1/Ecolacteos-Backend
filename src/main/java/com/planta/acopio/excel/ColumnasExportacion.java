@@ -1,13 +1,39 @@
 package com.planta.acopio.excel;
 
+import com.planta.acopio.dto.AlertaAnomaliaResponse;
+import com.planta.acopio.dto.AnalisisBandejaResponse;
+import com.planta.acopio.dto.ConfiguracionSistemaResponse;
+import com.planta.acopio.dto.DetalleSalidaResponse;
 import com.planta.acopio.dto.DetalleVentaResponse;
+import com.planta.acopio.dto.FamiliaResponse;
+import com.planta.acopio.dto.FilaPrecioPresentacionResponse;
+import com.planta.acopio.dto.FilaStockResponse;
+import com.planta.acopio.dto.InformeProduccionDiarioResponse;
+import com.planta.acopio.dto.InsumoResponse;
+import com.planta.acopio.dto.JornadaBandejaResponse;
+import com.planta.acopio.dto.LoteProduccionResponse;
+import com.planta.acopio.dto.MotivoObservacionResponse;
 import com.planta.acopio.dto.PagoResponse;
+import com.planta.acopio.dto.PrecioLitroResponse;
+import com.planta.acopio.dto.PrecioModalidadResponse;
+import com.planta.acopio.dto.PresentacionResponse;
+import com.planta.acopio.dto.ProductoResponse;
 import com.planta.acopio.dto.ProveedorAdminResponse;
+import com.planta.acopio.dto.RecepcionPlantaResponse;
+import com.planta.acopio.dto.RecetaResponse;
 import com.planta.acopio.dto.RegistroAcopioResponse;
+import com.planta.acopio.dto.ReservaResumenResponse;
+import com.planta.acopio.dto.UnidadResponse;
+import com.planta.acopio.dto.UsuarioResponse;
 import com.planta.acopio.dto.VentaResumenResponse;
+import com.planta.acopio.dto.ZonaResponse;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static com.planta.acopio.excel.ColumnaExcel.decimal;
 import static com.planta.acopio.excel.ColumnaExcel.entero;
@@ -88,5 +114,227 @@ public final class ColumnasExportacion {
             }
         }
         return lineas;
+    }
+
+    // ------------------------------------------------------------------------------------------ fase 3
+
+    public static final List<ColumnaExcel<ReservaResumenResponse>> RESERVAS = List.of(
+            texto("Código", 14, ReservaResumenResponse::codigo),
+            texto("Cliente", 30, ReservaResumenResponse::nombreCliente),
+            texto("Teléfono", 16, ReservaResumenResponse::telefono),
+            texto("Estado", 14, ReservaResumenResponse::estado),
+            fecha("Fecha de retiro", ReservaResumenResponse::fechaRetiro),
+            fechaHora("Creada", ReservaResumenResponse::creadoEn),
+            fechaHora("Vence", ReservaResumenResponse::expiraEn),
+            entero("Unidades", ReservaResumenResponse::unidades),
+            // Con precio por confirmar no hay importe: se deja vacio en vez de inventar uno.
+            decimal("Total", r -> r.precioAConfirmar() ? null : r.total()),
+            siNo("Precio por confirmar", ReservaResumenResponse::precioAConfirmar),
+            siNo("Requiere aceptación", ReservaResumenResponse::requiereAceptacion),
+            siNo("Precio aceptado", ReservaResumenResponse::precioAceptado),
+            siNo("Sin cobertura", ReservaResumenResponse::sinCobertura)
+    );
+
+    /** La recepcion solo trae el id de la unidad: la placa se resuelve con el mapa que arma quien exporta. */
+    public static List<ColumnaExcel<RecepcionPlantaResponse>> recepciones(Map<UUID, String> placasPorUnidad) {
+        return List.of(
+                fecha("Fecha", RecepcionPlantaResponse::fecha),
+                texto("Turno", 12, RecepcionPlantaResponse::turno),
+                texto("Unidad", 14, r -> placasPorUnidad.get(r.unidadId())),
+                decimal("Litros en campo", RecepcionPlantaResponse::litrosCampo),
+                decimal("Litros en planta", RecepcionPlantaResponse::litrosPlanta),
+                decimal("Diferencia (L)", RecepcionPlantaResponse::diferenciaLitros),
+                decimal("Diferencia (%)", RecepcionPlantaResponse::diferenciaPct),
+                texto("Estado", 14, RecepcionPlantaResponse::estado),
+                fechaHora("Hora de llegada", RecepcionPlantaResponse::horaLlegada),
+                texto("Observación", 30, RecepcionPlantaResponse::observacion)
+        );
+    }
+
+    public static final List<ColumnaExcel<LoteProduccionResponse>> LOTES = List.of(
+            fecha("Fecha", LoteProduccionResponse::fecha),
+            texto("Producto", 28, LoteProduccionResponse::productoNombre),
+            texto("Estado", 16, LoteProduccionResponse::estado),
+            decimal("Leche usada (L)", LoteProduccionResponse::litrosUsados),
+            texto("Receta", 24, LoteProduccionResponse::recetaNombre),
+            decimal("Cantidad esperada", LoteProduccionResponse::cantidadEsperada),
+            texto("Presentación esperada", 24, LoteProduccionResponse::presentacionEsperadaNombre),
+            texto("Obtenido", 34, l -> resumenSalidas(l.detalles())),
+            decimal("Rendimiento (%)", LoteProduccionResponse::rendimientoPct),
+            decimal("Rendimiento esperado (%)", LoteProduccionResponse::rendimientoEsperadoPct),
+            decimal("Diferencia", LoteProduccionResponse::diferencia),
+            fechaHora("Iniciado", LoteProduccionResponse::iniciadoEn),
+            fechaHora("Finalizado", LoteProduccionResponse::finalizadoEn)
+    );
+
+    private static String resumenSalidas(List<DetalleSalidaResponse> detalles) {
+        if (detalles == null || detalles.isEmpty()) {
+            return null;
+        }
+        return detalles.stream().map(d -> d.presentacionNombre() + " x " + d.cantidadObtenida()).collect(Collectors.joining("; "));
+    }
+
+    public static final List<ColumnaExcel<InformeProduccionDiarioResponse>> INFORMES_PRODUCCION = List.of(
+            fecha("Fecha", InformeProduccionDiarioResponse::fecha),
+            entero("Quesos diarios", InformeProduccionDiarioResponse::quesosDiarios),
+            entero("Quesos reparados", InformeProduccionDiarioResponse::quesosReparados),
+            entero("Quesos de recorte", InformeProduccionDiarioResponse::quesosDeRecorte),
+            entero("Total de quesos", InformeProduccionDiarioResponse::totalQuesos),
+            decimal("Recorte (kg)", InformeProduccionDiarioResponse::recorteEnKilos),
+            texto("Responsable", 26, InformeProduccionDiarioResponse::responsableNombre),
+            fechaHora("Registrado", InformeProduccionDiarioResponse::creadoEn),
+            texto("Actualizado por", 26, InformeProduccionDiarioResponse::actualizadoPorNombre),
+            fechaHora("Actualizado", InformeProduccionDiarioResponse::actualizadoEn)
+    );
+
+    public static final List<ColumnaExcel<FilaStockResponse>> STOCK = List.of(
+            texto("Familia", 20, FilaStockResponse::familiaNombre),
+            texto("Producto", 28, FilaStockResponse::productoNombre),
+            texto("Presentación", 28, FilaStockResponse::presentacionNombre),
+            texto("Se cuenta en", 14, FilaStockResponse::unidadConteo),
+            entero("Existencias", FilaStockResponse::stock),
+            siNo("Controla vencimiento", FilaStockResponse::controlaVencimiento),
+            entero("Vendible", FilaStockResponse::stockVendible),
+            entero("Reservado", FilaStockResponse::stockComprometido),
+            entero("Libre para vender", FilaStockResponse::stockLibre),
+            siNo("Producto activo", FilaStockResponse::productoActivo),
+            siNo("Presentación activa", FilaStockResponse::presentacionActivo)
+    );
+
+    public static final List<ColumnaExcel<InsumoResponse>> INSUMOS = List.of(
+            texto("Insumo", 30, InsumoResponse::nombre),
+            texto("Unidad de medida", 18, InsumoResponse::unidadMedida),
+            decimal("Stock", InsumoResponse::stock),
+            siNo("Activo", InsumoResponse::activo)
+    );
+
+    public static final List<ColumnaExcel<AnalisisBandejaResponse>> CALIDAD_ANALIZADOS = List.of(
+            fechaHora("Fecha de entrega", AnalisisBandejaResponse::fechaHora),
+            texto("Proveedor", 36, AnalisisBandejaResponse::proveedorNombre),
+            decimal("Litros", AnalisisBandejaResponse::litros),
+            texto("Resultado", 16, AnalisisBandejaResponse::resultado)
+    );
+
+    public static final List<ColumnaExcel<AlertaAnomaliaResponse>> ALERTAS_ANOMALIA = List.of(
+            fechaHora("Fecha", AlertaAnomaliaResponse::creadoEn),
+            texto("Proveedor", 36, AlertaAnomaliaResponse::proveedorNombre),
+            texto("Tipo", 24, AlertaAnomaliaResponse::tipo),
+            decimal("z-score", AlertaAnomaliaResponse::zScore),
+            texto("Severidad", 14, AlertaAnomaliaResponse::severidad)
+    );
+
+    public static final List<ColumnaExcel<JornadaBandejaResponse>> JORNADAS = List.of(
+            texto("Acopiador", 28, JornadaBandejaResponse::acopiadorNombre),
+            texto("Vehículo", 14, JornadaBandejaResponse::unidadPlaca),
+            texto("Estado", 22, JornadaBandejaResponse::estado),
+            fechaHora("Inicio", JornadaBandejaResponse::horaInicio),
+            fechaHora("Fin", JornadaBandejaResponse::horaFin),
+            entero("Acopios", JornadaBandejaResponse::cantidadAcopios),
+            entero("Proveedores", JornadaBandejaResponse::cantidadProveedores),
+            decimal("Litros esperados", JornadaBandejaResponse::litrosEsperados)
+    );
+
+    // ------------------------------------------------------------------------------------ administracion
+
+    /** Nunca incluye la contrasena ni su hash: UsuarioResponse no los tiene. */
+    public static final List<ColumnaExcel<UsuarioResponse>> USUARIOS = List.of(
+            texto("Nombre", 30, UsuarioResponse::nombre),
+            texto("Correo de acceso", 34, UsuarioResponse::email),
+            texto("Rol", 16, UsuarioResponse::rolNombre),
+            siNo("Activo", UsuarioResponse::activo)
+    );
+
+    public static final List<ColumnaExcel<PrecioLitroResponse>> PRECIOS_LITRO = List.of(
+            fecha("Vigente desde", PrecioLitroResponse::vigenteDesde),
+            decimal("Precio por litro", 3, PrecioLitroResponse::precio)
+    );
+
+    public static final List<ColumnaExcel<FilaPrecioPresentacionResponse>> PRECIOS_PRESENTACION = preciosPresentacion();
+
+    private static List<ColumnaExcel<FilaPrecioPresentacionResponse>> preciosPresentacion() {
+        List<ColumnaExcel<FilaPrecioPresentacionResponse>> columnas = new ArrayList<>(List.of(
+                texto("Familia", 20, FilaPrecioPresentacionResponse::familiaNombre),
+                texto("Producto", 28, FilaPrecioPresentacionResponse::productoNombre),
+                texto("Presentación", 28, FilaPrecioPresentacionResponse::presentacionNombre)));
+        agregarModalidad(columnas, "Mayorista", FilaPrecioPresentacionResponse::mayorista);
+        agregarModalidad(columnas, "Proveedor", FilaPrecioPresentacionResponse::proveedor);
+        agregarModalidad(columnas, "Público", FilaPrecioPresentacionResponse::publico);
+        return List.copyOf(columnas);
+    }
+
+    private static void agregarModalidad(List<ColumnaExcel<FilaPrecioPresentacionResponse>> columnas, String nombre,
+                                         Function<FilaPrecioPresentacionResponse, PrecioModalidadResponse> modalidad) {
+        columnas.add(decimal(nombre, f -> campo(modalidad.apply(f), PrecioModalidadResponse::precio)));
+        columnas.add(fecha(nombre + ": vigente desde", f -> campo(modalidad.apply(f), PrecioModalidadResponse::vigenteDesde)));
+        columnas.add(texto(nombre + ": situación", 16, f -> campo(modalidad.apply(f), PrecioModalidadResponse::estado)));
+    }
+
+    private static Object campo(PrecioModalidadResponse m, Function<PrecioModalidadResponse, Object> extractor) {
+        return m == null ? null : extractor.apply(m);
+    }
+
+    public static final List<ColumnaExcel<ZonaResponse>> ZONAS = List.of(
+            texto("Zona", 30, ZonaResponse::nombre),
+            siNo("Activa", ZonaResponse::activa)
+    );
+
+    public static final List<ColumnaExcel<MotivoObservacionResponse>> MOTIVOS_OBSERVACION = List.of(
+            texto("Motivo", 50, MotivoObservacionResponse::descripcion)
+    );
+
+    public static final List<ColumnaExcel<FamiliaResponse>> FAMILIAS = List.of(
+            texto("Familia", 30, FamiliaResponse::nombre),
+            siNo("Activa", FamiliaResponse::activo)
+    );
+
+    public static final List<ColumnaExcel<ProductoResponse>> PRODUCTOS = List.of(
+            texto("Producto", 30, ProductoResponse::nombre),
+            texto("Familia", 20, ProductoResponse::familiaNombre),
+            decimal("Rendimiento esperado (%)", ProductoResponse::rendimientoEsperadoPct),
+            texto("Ciclo de capital", 16, ProductoResponse::cicloCapital),
+            texto("Presentaciones", 50, p -> nombresPresentaciones(p.presentaciones())),
+            siNo("Activo", ProductoResponse::activo)
+    );
+
+    private static String nombresPresentaciones(List<PresentacionResponse> presentaciones) {
+        if (presentaciones == null || presentaciones.isEmpty()) {
+            return null;
+        }
+        return presentaciones.stream().map(PresentacionResponse::nombre).collect(Collectors.joining("; "));
+    }
+
+    public static final List<ColumnaExcel<RecetaResponse>> RECETAS = List.of(
+            texto("Receta", 28, RecetaResponse::nombre),
+            texto("Producto", 28, RecetaResponse::productoNombre),
+            texto("Presentación", 28, RecetaResponse::presentacionNombre),
+            decimal("Leche base (L)", RecetaResponse::litrosBase),
+            decimal("Rendimiento base", RecetaResponse::rendimientoBase),
+            texto("Insumos por leche base", 50, r -> resumenInsumos(r.insumos())),
+            siNo("Activa", RecetaResponse::activo)
+    );
+
+    private static String resumenInsumos(List<RecetaResponse.Insumo> insumos) {
+        if (insumos == null || insumos.isEmpty()) {
+            return null;
+        }
+        return insumos.stream()
+                .map(i -> i.insumoNombre() + " " + (i.cantidad() == null ? "" : i.cantidad().stripTrailingZeros().toPlainString()) + " " + i.unidadMedida())
+                .collect(Collectors.joining("; "));
+    }
+
+    public static final List<ColumnaExcel<ConfiguracionSistemaResponse>> CONFIGURACION = List.of(
+            texto("Parámetro", 36, ConfiguracionSistemaResponse::clave),
+            texto("Valor", 24, ConfiguracionSistemaResponse::valor),
+            texto("Descripción", 70, ConfiguracionSistemaResponse::descripcion)
+    );
+
+    /** La unidad solo trae ids de zona: los nombres se resuelven con el mapa que arma quien exporta. */
+    public static List<ColumnaExcel<UnidadResponse>> unidades(Map<UUID, String> zonasPorId) {
+        return List.of(
+                texto("Placa", 14, UnidadResponse::placa),
+                decimal("Capacidad (t)", UnidadResponse::capacidadTon),
+                texto("Zona", 22, u -> u.zonaId() == null ? null : zonasPorId.get(u.zonaId())),
+                texto("Responsable", 30, UnidadResponse::responsableNombre)
+        );
     }
 }
