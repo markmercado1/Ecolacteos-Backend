@@ -96,6 +96,13 @@ app:
     # La planta opera en Lima; no asumir la zona del servidor.
     zona-horaria: ${VENCIMIENTO_ZONA_HORARIA:America/Lima}
 
+  # Fase G (IGV configurable en ventas). Los precios son FINALES (incluyen el IGV): nunca se suma, solo se desglosa. El calculo
+  # esta APAGADO por defecto hasta que el contador confirme la afectacion de cada producto, la tasa y el redondeo; mientras
+  # tanto la configuracion (tasa con vigencia, afectacion por presentacion) se puede preparar en el panel sin efecto alguno.
+  tributario:
+    igv:
+      calculo-habilitado: ${TRIBUTARIO_IGV_CALCULO_HABILITADO:false}
+
   # Fase 3 (catalogo publico). Estado "pocas unidades": stock VENDIBLE entre 1 y este umbral (inclusive). El resultado
   # se conserva en memoria este numero de segundos (0 = sin cache) para que un endpoint sin autenticacion no
   # recalcule contra la base en cada visita.

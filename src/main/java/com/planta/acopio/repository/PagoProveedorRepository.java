@@ -30,7 +30,7 @@ public interface PagoProveedorRepository extends JpaRepository<PagoProveedor, UU
             + "AND lower(btrim(nro_operacion)) = lower(btrim(:operacion)) LIMIT 1", nativeQuery = true)
     Optional<PagoProveedor> findOperacionVigente(@Param("banco") String banco, @Param("operacion") String operacion);
 
-    // Listado paginado: proveedor y estado opcionales; busqueda por nombre o DNI del proveedor, numero de operacion o de recibo
+    // Listado paginado: proveedor y estado opcionales; busqueda por nombre, DNI, RUC o razon social del proveedor, numero de operacion o de recibo
     // (sin acentos ni mayusculas) antes de paginar. Mas reciente primero.
     String FILTROS =
             "FROM pago_proveedor pp JOIN proveedor pr ON pp.proveedor_id = pr.id "
@@ -38,7 +38,9 @@ public interface PagoProveedorRepository extends JpaRepository<PagoProveedor, UU
             + "AND (CAST(:estado AS varchar) IS NULL OR pp.estado = CAST(:estado AS varchar)) "
             + "AND (" + BusquedaTexto.SIN_TERMINO + " OR "
             + BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
-            + BusquedaTexto.PLEGAR_ABRE + "pr.dni" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
+            + BusquedaTexto.PLEGAR_ABRE + "coalesce(pr.dni, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
+            + BusquedaTexto.PLEGAR_ABRE + "coalesce(pr.ruc, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
+            + BusquedaTexto.PLEGAR_ABRE + "coalesce(pr.razon_social, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
             + BusquedaTexto.PLEGAR_ABRE + "coalesce(pp.nro_operacion, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR "
             + BusquedaTexto.PLEGAR_ABRE + "coalesce(pp.nro_recibo, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
 

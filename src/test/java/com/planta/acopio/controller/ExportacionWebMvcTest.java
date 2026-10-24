@@ -89,7 +89,7 @@ class ExportacionWebMvcTest {
 
     private ProveedorAdminResponse proveedor(int i) {
         return new ProveedorAdminResponse(UUID.randomUUID(), "Proveedor " + i, String.format("%08d", i), "+51987654321",
-                UUID.randomUUID(), "Zona Norte", "qr-" + i, true);
+                UUID.randomUUID(), "Zona Norte", "qr-" + i, true, "NATURAL", i == 0 ? "10000000003" : null, null);
     }
 
     @BeforeEach
@@ -126,7 +126,10 @@ class ExportacionWebMvcTest {
 
         Sheet hoja = hojaDe(resultado);
         assertThat(hoja.getLastRowNum()).isEqualTo(1100); // todas las filas, no 20
-        assertThat(hoja.getRow(1).getCell(1).getStringCellValue()).isEqualTo("00000000"); // ceros iniciales del DNI
+        assertThat(hoja.getRow(1).getCell(1).getStringCellValue()).isEqualTo("Persona natural");
+        assertThat(hoja.getRow(1).getCell(2).getStringCellValue()).isEqualTo("00000000"); // ceros iniciales del DNI
+        assertThat(hoja.getRow(1).getCell(3).getStringCellValue()).isEqualTo("10000000003"); // RUC como texto
+        assertThat(hoja.getRow(0).getCell(4).getStringCellValue()).isEqualTo("Razón social");
         ArgumentCaptor<Pageable> paginas = ArgumentCaptor.forClass(Pageable.class);
         verify(proveedorService, org.mockito.Mockito.times(3)).buscar(eq(zona), eq(true), eq("huaman"), paginas.capture());
         assertThat(paginas.getAllValues()).extracting(Pageable::getPageNumber).containsExactly(0, 1, 2);

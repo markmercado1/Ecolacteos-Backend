@@ -102,7 +102,7 @@ public class ExportacionController {
     public ResponseEntity<Resource> proveedores(
             @Parameter(description = "Filtrar por zona actual") @RequestParam(required = false) UUID zonaId,
             @Parameter(description = "Filtrar por estado activo/inactivo") @RequestParam(required = false) Boolean activo,
-            @Parameter(description = "Nombre o DNI (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda) {
+            @Parameter(description = "Nombre, DNI, RUC o razón social (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda) {
         return RespuestaExcel.de(excel.exportar("proveedores", "Proveedores", ColumnasExportacion.PROVEEDORES,
                 pagina -> proveedorService.buscar(zonaId, activo, busqueda, pagina)));
     }
@@ -123,7 +123,7 @@ public class ExportacionController {
     @GetMapping("/pagos")
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<Resource> pagos(
-            @Parameter(description = "Nombre o DNI del proveedor") @RequestParam(required = false) String busqueda) {
+            @Parameter(description = "Nombre, DNI, RUC o razón social del proveedor") @RequestParam(required = false) String busqueda) {
         return RespuestaExcel.de(excel.exportar("pagos", "Pagos", ColumnasExportacion.PAGOS,
                 pagina -> pagoService.listar(busqueda, pagina)));
     }

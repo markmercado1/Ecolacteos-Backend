@@ -13,5 +13,27 @@ public record VentaResumenResponse(
     LocalDate fecha,
     String tipoCliente,
     List<DetalleVentaResponse> detalles,
-    BigDecimal total
-) {}
+    BigDecimal total,
+    // Fase G: resumen del IGV contenido en el total (ver ResumenIgvVenta).
+    ResumenIgvVenta igv
+) {
+
+    public VentaResumenResponse(UUID id, LocalDate fecha, String tipoCliente, List<DetalleVentaResponse> detalles, BigDecimal total) {
+        this(id, fecha, tipoCliente, detalles, total, null);
+    }
+
+    /**
+     * estado: SIN_DETERMINAR (ninguna linea tiene foto tributaria: ventas anteriores o calculo apagado), DETERMINADO (todas) o
+     * PARCIAL. Los importes suman solo las lineas determinadas; montoSinDeterminar es el resto del total. incluyeIgv = alguna
+     * linea gravada (el total "incluye IGV" por igvTotal).
+     */
+    public record ResumenIgvVenta(
+        String estado,
+        boolean incluyeIgv,
+        BigDecimal operacionesGravadas,
+        BigDecimal operacionesExoneradas,
+        BigDecimal operacionesInafectas,
+        BigDecimal igvTotal,
+        BigDecimal montoSinDeterminar
+    ) {}
+}

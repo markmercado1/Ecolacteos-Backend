@@ -15,8 +15,21 @@ public class Proveedor {
     @Column(nullable = false, length = 150)
     private String nombre;
 
-    @Column(nullable = false, unique = true, length = 15)
+    // Fase G (V31): obligatorio para persona natural, nulo para empresa (ver ck_proveedor_documentos).
+    @Column(unique = true, length = 15)
     private String dni;
+
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_persona", nullable = false, length = 10)
+    private TipoPersona tipoPersona = TipoPersona.NATURAL;
+
+    // Opcional para persona natural, obligatorio para empresa.
+    @Column(length = 11)
+    private String ruc;
+
+    // Solo empresa.
+    @Column(name = "razon_social", length = 150)
+    private String razonSocial;
 
     @Column(length = 20)
     private String telefono;
@@ -36,6 +49,13 @@ public class Proveedor {
     private LocalDateTime creadoEn = LocalDateTime.now();
 
     public Proveedor() {}
+
+    public TipoPersona getTipoPersona() { return tipoPersona; }
+    public void setTipoPersona(TipoPersona tipoPersona) { this.tipoPersona = tipoPersona; }
+    public String getRuc() { return ruc; }
+    public void setRuc(String ruc) { this.ruc = ruc; }
+    public String getRazonSocial() { return razonSocial; }
+    public void setRazonSocial(String razonSocial) { this.razonSocial = razonSocial; }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }

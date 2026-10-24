@@ -53,6 +53,7 @@ class CatalogoPublicoServiceTest {
     @Mock private PlatformTransactionManager transactionManager;
     @Mock private ReservaCompromisos compromisos;
     @Mock private ReservaConfig reservaConfig;
+    @Mock private ConfiguracionIgvService igvService;
 
     private final ReglaVencimiento regla = new ReglaVencimiento(
             Clock.fixed(HOY.atTime(10, 0).atZone(ZoneId.of("America/Lima")).toInstant(), ZoneId.of("America/Lima")));
@@ -78,7 +79,7 @@ class CatalogoPublicoServiceTest {
         when(transactionManager.getTransaction(any())).thenReturn(new SimpleTransactionStatus());
         when(reservaConfig.actuales()).thenReturn(PARAMETROS);
         service = new CatalogoPublicoService(presentacionRepository, precioRepository, inventarioService, regla,
-                compromisos, reservaConfig, transactionManager, 5, 30, reloj);
+                compromisos, reservaConfig, transactionManager, igvService, 5, 30, reloj);
 
         Familia lacteos = new Familia();
         lacteos.setNombre("Yogurt");
@@ -129,6 +130,25 @@ class CatalogoPublicoServiceTest {
     private CatalogoPublicoResponse.Presentacion de(CatalogoPublicoResponse r, Presentacion pr) {
         return r.productos().stream().flatMap(p -> p.presentaciones().stream())
                 .filter(p -> p.id().equals(pr.getId())).findFirst().orElse(null);
+    }
+
+    // ------------------------------------------------------------------ Fase G: "Incluye IGV"
+
+    @Test
+    void incluyeIgvSoloEnLoQueElServicioDeIgvMarcaGravadoHoyYNuncaSinPrecio() {
+        precios(precio(litro, "10.00", HOY.minusDays(30))); // medio queda "precio a confirmar"
+        when(igvService.gravadasConTasa(any(), eq(HOY))).thenReturn(java.util.Set.of(litro.getId(), medio.getId()));
+
+        var r = service.obtener();
+
+        assertThat(de(r, litro).incluyeIgv()).isTrue();
+        assertThat(de(r, medio).incluyeIgv()).isFalse(); // sin precio no hay importe que "incluya" nada
+    }
+
+    @Test
+    void sinCalculoDeIgvNingunPrecioDiceIncluyeIgv() {
+        var r = service.obtener(); // el mock devuelve un conjunto vacio, como el servicio con el calculo apagado
+        assertThat(r.productos().get(0).presentaciones()).allMatch(p -> !p.incluyeIgv());
     }
 
     // ------------------------------------------------------------------ que se publica
@@ -309,7 +329,7 @@ class CatalogoPublicoServiceTest {
     @Test
     void conCacheDeCeroSegundosSiempreRecalcula() {
         var sinCache = new CatalogoPublicoService(presentacionRepository, precioRepository, inventarioService, regla,
-                compromisos, reservaConfig, transactionManager, 5, 0, reloj);
+                compromisos, reservaConfig, transactionManager, igvService, 5, 0, reloj);
 
         sinCache.obtener();
         sinCache.obtener();

@@ -396,8 +396,10 @@ class CatalogoPublicoIntegrationTest {
         JsonNode n = presentacion(json.readTree(cuerpo), p, pr);
         assertThat(n.fieldNames()).toIterable().containsExactlyInAnyOrder(
                 "id", "nombre", "contenidoCantidad", "contenidoUnidad", "unidadConteo", "fotoUrl", "precio", "precioAConfirmar", "disponibilidad",
-                "unidadesDisponibles");
+                "unidadesDisponibles", "incluyeIgv");
         assertThat(n.get("unidadesDisponibles").isNull()).as("con 20 vendibles no se publica la cantidad").isTrue();
+        // Fase G: con el calculo de IGV apagado (por defecto) ningun precio dice "Incluye IGV"
+        assertThat(n.get("incluyeIgv").asBoolean()).isFalse();
     }
 
     @Test

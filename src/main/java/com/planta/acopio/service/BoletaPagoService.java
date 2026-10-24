@@ -16,6 +16,7 @@ import com.planta.acopio.entity.AjusteCalidadEntrega;
 import com.planta.acopio.entity.AjustePrecioPago;
 import com.planta.acopio.entity.LineaPago;
 import com.planta.acopio.entity.Pago;
+import com.planta.acopio.entity.Proveedor;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.repository.AjusteCalidadEntregaRepository;
 import com.planta.acopio.repository.AjustePrecioPagoRepository;
@@ -133,9 +134,17 @@ public class BoletaPagoService {
 
             // --- Datos del pago ---
             PdfPTable datos = tabla(new float[]{1.2f, 2f});
-            fila(datos, "Proveedor", pago.getProveedor().getNombre(), normal, negrita);
-            if (pago.getProveedor().getDni() != null && !pago.getProveedor().getDni().isBlank()) {
-                fila(datos, "DNI", pago.getProveedor().getDni(), normal, negrita);
+            // Fase G: una empresa se identifica con su razon social y RUC; una persona natural con su DNI y, si lo tiene, su RUC.
+            Proveedor proveedor = pago.getProveedor();
+            fila(datos, "Proveedor", proveedor.getNombre(), normal, negrita);
+            if (presente(proveedor.getRazonSocial()) && !proveedor.getRazonSocial().equals(proveedor.getNombre())) {
+                fila(datos, "Razón social", proveedor.getRazonSocial(), normal, negrita);
+            }
+            if (presente(proveedor.getDni())) {
+                fila(datos, "DNI", proveedor.getDni(), normal, negrita);
+            }
+            if (presente(proveedor.getRuc())) {
+                fila(datos, "RUC", proveedor.getRuc(), normal, negrita);
             }
             fila(datos, "Semana", fecha(pago.getSemanaInicio()) + " al " + fecha(pago.getSemanaFin()), normal, negrita);
             fila(datos, "Registros de acopio", String.valueOf(pago.getRegistrosLiquidados().size()), normal, negrita);
@@ -285,5 +294,9 @@ public class BoletaPagoService {
     // Importes con punto decimal y separador de miles estable (no depende del idioma del servidor).
     private static String soles(BigDecimal importe, int decimales) {
         return String.format(Locale.US, "S/ %,." + decimales + "f", importe);
+    }
+
+    private static boolean presente(String texto) {
+        return texto != null && !texto.isBlank();
     }
 }

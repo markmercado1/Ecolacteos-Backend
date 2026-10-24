@@ -35,13 +35,13 @@ public class ProveedorController {
         this.proveedorService = proveedorService;
     }
 
-    @Operation(summary = "Crear proveedor", description = "Rol requerido: ADMIN. El DNI debe ser único; la zona es opcional.")
+    @Operation(summary = "Crear proveedor", description = "Rol requerido: ADMIN. `tipoPersona` NATURAL (por defecto: nombre y DNI de 8 dígitos obligatorios, RUC opcional = 10 + DNI + verificador) o EMPRESA (RUC 20... y razón social obligatorios, sin DNI; nombre opcional). DNI y RUC son únicos; la zona es opcional.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Proveedor creado",
                     content = @Content(schema = @Schema(implementation = ProveedorAdminResponse.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos"),
             @ApiResponse(responseCode = "404", description = "La zonaActualId indicada no existe"),
-            @ApiResponse(responseCode = "409", description = "Ya existe un proveedor con ese DNI")
+            @ApiResponse(responseCode = "409", description = "Ya existe un proveedor con ese DNI o RUC")
     })
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")
@@ -59,7 +59,7 @@ public class ProveedorController {
             summary = "Listar proveedores (completo, paginado)",
             description = "Rol requerido: ADMIN. Incluye datos personales (DNI, teléfono) — para el listado "
                     + "sin datos personales, apto para roles operativos, usar GET /api/proveedores/operativo. "
-                    + "`zonaId`, `activo` y `busqueda` (nombre o DNI) son opcionales y combinables, y se aplican antes de paginar. `page` (default 0) y `size` (default 20, "
+                    + "`zonaId`, `activo` y `busqueda` (nombre, DNI, RUC o razón social) son opcionales y combinables, y se aplican antes de paginar. `page` (default 0) y `size` (default 20, "
                     + "máx. 100) controlan la paginación real."
     )
     @ApiResponse(responseCode = "200", description = "Página de proveedores encontrados",
@@ -69,7 +69,7 @@ public class ProveedorController {
     public ResponseEntity<PaginaResponse<ProveedorAdminResponse>> listar(
             @Parameter(description = "Filtrar por zona actual (opcional)") @RequestParam(required = false) UUID zonaId,
             @Parameter(description = "Filtrar por estado activo/inactivo (opcional)") @RequestParam(required = false) Boolean activo,
-            @Parameter(description = "Buscar por nombre o DNI en todo el padrón (opcional, sin distinguir mayúsculas)") @RequestParam(required = false) String busqueda,
+            @Parameter(description = "Buscar por nombre, DNI, RUC o razón social en todo el padrón (opcional, sin distinguir mayúsculas)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(PaginaResponse.de(proveedorService.buscar(zonaId, activo, busqueda, Paginacion.de(page, size))));
@@ -137,7 +137,7 @@ public class ProveedorController {
     // era reasignar zona (PUT /{id}/zona, que se mantiene intacto abajo).
     @Operation(
             summary = "Editar proveedor",
-            description = "Rol requerido: ADMIN. Edita nombre/DNI/teléfono. Para cambiar la zona usar "
+            description = "Rol requerido: ADMIN. Edita nombre, tipo de persona, DNI, RUC, razón social y teléfono con las mismas reglas que al crear (un DNI o RUC sin cambios se conserva aunque no cumpla el formato actual). Para cambiar la zona usar "
                     + "PUT /{id}/zona, que además cierra el período de historial de zona anterior."
     )
     @ApiResponses({
@@ -145,7 +145,7 @@ public class ProveedorController {
                     content = @Content(schema = @Schema(implementation = ProveedorAdminResponse.class))),
             @ApiResponse(responseCode = "400", description = "Datos inválidos"),
             @ApiResponse(responseCode = "404", description = "No existe un proveedor con ese id"),
-            @ApiResponse(responseCode = "409", description = "Ya existe otro proveedor con ese DNI")
+            @ApiResponse(responseCode = "409", description = "Ya existe otro proveedor con ese DNI o RUC")
     })
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")

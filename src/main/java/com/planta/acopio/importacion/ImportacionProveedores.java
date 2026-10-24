@@ -1,7 +1,9 @@
 package com.planta.acopio.importacion;
 
 import com.planta.acopio.dto.ProveedorRequest;
+import com.planta.acopio.entity.TipoPersona;
 import com.planta.acopio.entity.Zona;
+import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.ProveedorRepository;
 import com.planta.acopio.repository.ZonaRepository;
 import com.planta.acopio.service.BusquedaTexto;
@@ -25,21 +27,35 @@ import java.util.regex.Pattern;
  * Importacion de proveedores (padron inicial). Cada proveedor se crea con {@link ProveedorService#crear}, el mismo camino que
  * la pantalla «Nuevo proveedor»: asi conserva el codigo QR, el historial de zona y su aparicion en la sincronizacion movil.
  *
- * Reglas propias de la importacion (la pantalla manual hoy solo exige que no esten vacios): el DNI debe tener 8 digitos y el
- * telefono, de informarse, ser un celular peruano valido (se guarda normalizado como +519XXXXXXXX). La zona, de informarse,
- * debe ser una zona activa existente. Solo crea: un DNI que ya existe se omite.
+ * Reglas propias de la importacion: el telefono, de informarse, debe ser un celular peruano valido (se guarda normalizado
+ * como +519XXXXXXXX) y la zona, de informarse, una zona activa existente. Solo crea: un DNI o RUC que ya existe se omite.
+ *
+ * Fase G (version 2 de la plantilla): tipo de persona, RUC y razon social. Los documentos se validan con las MISMAS reglas que
+ * la pantalla (ProveedorService.validarDocumentos): persona natural = nombre y DNI de 8 digitos, RUC opcional (10 + DNI +
+ * verificador); empresa = RUC 20... y razon social, sin DNI. Una plantilla de la version 1 se rechaza con un aviso claro.
  */
 @Component
 public class ImportacionProveedores implements TipoImportacion<ImportacionProveedores.Contexto> {
 
     public static final String CODIGO = "proveedores";
     private static final Pattern OCHO_DIGITOS = Pattern.compile("\\d{8}");
+    private static final Pattern ONCE_DIGITOS = Pattern.compile("\\d{11}");
+    static final String TIPO_NATURAL = "Persona natural";
+    static final String TIPO_EMPRESA = "Empresa";
     private static final Pattern SOLO_DIGITOS = Pattern.compile("\\d+");
 
-    private static final ColumnaImportacion NOMBRE = new ColumnaImportacion("nombre", "Nombre completo", true, false, 34,
-            "Nombres y apellidos, hasta 150 caracteres.", "Rosa Quispe Huamán");
-    private static final ColumnaImportacion DNI = new ColumnaImportacion("dni", "DNI", true, true, 14,
-            "8 dígitos (con los ceros del inicio). La plantilla lo guarda como texto.", "04567890");
+    private static final ColumnaImportacion TIPO = new ColumnaImportacion("tipo", "Tipo de persona", false, false, 18,
+            "«Persona natural» o «Empresa» (lista desplegable). Vacío = Persona natural.", TIPO_NATURAL);
+    private static final ColumnaImportacion NOMBRE = new ColumnaImportacion("nombre", "Nombre completo", false, false, 34,
+            "Nombres y apellidos, hasta 150 caracteres. Obligatorio para una persona natural; para una empresa es opcional "
+                    + "(nombre comercial o de contacto; si falta se usa la razón social).", "Rosa Quispe Huamán");
+    private static final ColumnaImportacion DNI = new ColumnaImportacion("dni", "DNI", false, true, 14,
+            "8 dígitos (con los ceros del inicio). Obligatorio para una persona natural; una empresa no lleva DNI.", "04567890");
+    private static final ColumnaImportacion RUC = new ColumnaImportacion("ruc", "RUC", false, true, 14,
+            "11 dígitos. Opcional para una persona natural (10 + su DNI + verificador); obligatorio para una empresa (empieza con 20).",
+            "10045678901");
+    private static final ColumnaImportacion RAZON_SOCIAL = new ColumnaImportacion("razonSocial", "Razón social", false, false, 34,
+            "Solo para una empresa (obligatoria), hasta 150 caracteres.", "Lácteos del Valle S.A.C.");
     private static final ColumnaImportacion TELEFONO = new ColumnaImportacion("telefono", "Teléfono", false, true, 18,
             "Celular peruano: 9 dígitos que empiezan con 9, con o sin +51. Se guarda como +519XXXXXXXX. Opcional.", "987 654 321");
     private static final ColumnaImportacion ZONA = new ColumnaImportacion("zona", "Zona", false, false, 24,
@@ -49,8 +65,11 @@ public class ImportacionProveedores implements TipoImportacion<ImportacionProvee
     public record ZonaConocida(UUID id, String nombre) {
     }
 
-    /** Lo que se consulta UNA vez por archivo: zonas activas (por nombre plegado) y de los DNI del archivo, cuales ya existen. */
-    public record Contexto(Map<String, ZonaConocida> zonasPorNombre, Set<String> dniExistentes) {
+    /** Lo que se consulta UNA vez por archivo: zonas activas (por nombre plegado) y de los DNI y RUC del archivo, cuales ya existen. */
+    public record Contexto(Map<String, ZonaConocida> zonasPorNombre, Set<String> dniExistentes, Set<String> rucExistentes) {
+        public Contexto(Map<String, ZonaConocida> zonasPorNombre, Set<String> dniExistentes) {
+            this(zonasPorNombre, dniExistentes, Set.of());
+        }
     }
 
     private final ProveedorService proveedorService;
@@ -65,22 +84,25 @@ public class ImportacionProveedores implements TipoImportacion<ImportacionProvee
 
     @Override public String codigo() { return CODIGO; }
     @Override public String titulo() { return "Proveedores"; }
-    @Override public int version() { return 1; }
+    @Override public int version() { return 2; }
 
     @Override
     public List<ColumnaImportacion> columnas() {
-        return List.of(NOMBRE, DNI, TELEFONO, ZONA);
+        return List.of(TIPO, NOMBRE, DNI, RUC, RAZON_SOCIAL, TELEFONO, ZONA);
     }
 
     @Override
     public List<String> instrucciones() {
         return List.of(
                 "PROVEEDORES",
-                "• DNI y teléfono: la plantilla los guarda como texto para no perder los ceros del inicio. Si Excel igual los convierte en número, "
-                        + "el DNI se completa con ceros a la izquierda hasta 8 dígitos.",
+                "• Persona natural: nombre y DNI obligatorios; RUC opcional (si lo tiene, es 10 + su DNI + un dígito verificador). "
+                        + "No lleva razón social.",
+                "• Empresa: RUC (empieza con 20) y razón social obligatorios; no lleva DNI. El nombre es opcional.",
+                "• DNI, RUC y teléfono: la plantilla los guarda como texto para no perder los ceros del inicio. Si Excel igual convierte "
+                        + "el DNI en número, se completa con ceros a la izquierda hasta 8 dígitos.",
                 "• Zona: elige una de la lista. Si el proveedor aún no tiene zona, déjala vacía.",
                 "• Cada proveedor creado recibe su código QR y su historial de zona, y aparece en la app móvil en la próxima sincronización.",
-                "• Un DNI que ya existe (aunque ese proveedor esté inactivo) o que se repite dentro del archivo se omite: no se modifica a nadie."
+                "• Un DNI o RUC que ya existe (aunque ese proveedor esté inactivo) o que se repite dentro del archivo se omite: no se modifica a nadie."
         );
     }
 
@@ -88,7 +110,7 @@ public class ImportacionProveedores implements TipoImportacion<ImportacionProvee
     public Map<String, List<String>> listasDesplegables() {
         List<String> zonas = zonaRepository.findByActivaTrue().stream().map(Zona::getNombre)
                 .sorted(Comparator.comparing(BusquedaTexto::plegar)).toList();
-        return Map.of(ZONA.clave(), zonas);
+        return Map.of(ZONA.clave(), zonas, TIPO.clave(), List.of(TIPO_NATURAL, TIPO_EMPRESA));
     }
 
     @Override
@@ -98,44 +120,79 @@ public class ImportacionProveedores implements TipoImportacion<ImportacionProvee
             zonas.putIfAbsent(BusquedaTexto.plegar(ReglasCelda.limpiar(z.getNombre())), new ZonaConocida(z.getId(), z.getNombre()));
         }
         Set<String> candidatos = new HashSet<>();
+        Set<String> rucs = new HashSet<>();
         for (FilaCruda fila : filas) {
             normalizarDni(fila.celda(DNI.clave()), new ArrayList<>()).ifPresent(candidatos::add);
+            normalizarRuc(fila.celda(RUC.clave()), new ArrayList<>()).ifPresent(rucs::add);
         }
         Set<String> existentes = candidatos.isEmpty() ? Set.of() : new HashSet<>(proveedorRepository.dnisExistentes(candidatos));
-        return new Contexto(zonas, existentes);
+        Set<String> rucExistentes = rucs.isEmpty() ? Set.of() : new HashSet<>(proveedorRepository.rucsExistentes(rucs));
+        return new Contexto(zonas, existentes, rucExistentes);
     }
 
     @Override
     public ResultadoFila validar(FilaCruda fila, Contexto contexto) {
         List<String> errores = new ArrayList<>();
-        String nombre = ReglasCelda.textoObligatorio(fila, NOMBRE, 150, errores);
+        TipoPersona tipo = leerTipo(fila, errores);
+        String nombre = leerTextoOpcional(fila, NOMBRE, 150, errores);
         String dni = leerDni(fila, errores);
+        String ruc = leerRuc(fila, errores);
+        String razonSocial = leerTextoOpcional(fila, RAZON_SOCIAL, 150, errores);
         String telefono = leerTelefono(fila, errores);
         ZonaConocida zona = leerZona(fila, contexto, errores);
+        // Lo que falta segun el tipo se informa junto con los demas errores de la fila (el resto de las reglas, despues).
+        if (tipo == TipoPersona.NATURAL && nombre == null && !errores.stream().anyMatch(m -> m.startsWith(NOMBRE.encabezado()))) {
+            errores.add(NOMBRE.encabezado() + ": es obligatorio para una persona natural.");
+        }
+        if (tipo == TipoPersona.NATURAL && dni == null && fila.celda(DNI.clave()).vacia()) {
+            errores.add("DNI: es obligatorio para una persona natural.");
+        }
+        ProveedorService.Documentos doc = null;
+        if (errores.isEmpty() && tipo != null) {
+            try {
+                doc = ProveedorService.validarDocumentos(tipo, nombre, dni, ruc, razonSocial, null);
+            } catch (ValidacionNegocioException e) {
+                errores.add(e.getMessage());
+            }
+        }
         if (!errores.isEmpty()) {
             return ResultadoFila.invalida(ReglasCelda.crudos(fila, columnas()), errores);
         }
         Map<String, String> valores = new LinkedHashMap<>();
-        valores.put("nombre", nombre);
-        valores.put("dni", dni);
+        valores.put("tipo", doc.tipo() == TipoPersona.EMPRESA ? TIPO_EMPRESA : TIPO_NATURAL);
+        valores.put("nombre", doc.nombre());
+        valores.put("dni", doc.dni() == null ? "" : doc.dni());
+        valores.put("ruc", doc.ruc() == null ? "" : doc.ruc());
+        valores.put("razonSocial", doc.razonSocial() == null ? "" : doc.razonSocial());
         valores.put("telefono", telefono);
         valores.put("zona", zona == null ? "" : zona.nombre());
         valores.put("zonaId", zona == null ? "" : zona.id().toString());
-        if (contexto.dniExistentes().contains(dni)) {
-            return ResultadoFila.duplicada(valores, "Ya existe un proveedor con el DNI " + dni + " (activo o inactivo). No se modifica.");
+        valores.put("tipoPersona", doc.tipo().name());
+        if (doc.dni() != null && contexto.dniExistentes().contains(doc.dni())) {
+            return ResultadoFila.duplicada(valores, "Ya existe un proveedor con el DNI " + doc.dni() + " (activo o inactivo). No se modifica.");
+        }
+        if (doc.ruc() != null && contexto.rucExistentes().contains(doc.ruc())) {
+            return ResultadoFila.duplicada(valores, "Ya existe un proveedor con el RUC " + doc.ruc() + " (activo o inactivo). No se modifica.");
         }
         return ResultadoFila.valida(valores);
     }
 
+    // Un DNI identifica a la persona (y su RUC 10 lo contiene); una empresa, su RUC.
     @Override
     public String claveUnica(Map<String, String> valores) {
-        return valores.get("dni");
+        String dni = valores.get("dni");
+        return dni != null && !dni.isBlank() ? dni : "RUC " + valores.get("ruc");
     }
 
     @Override
     public Optional<String> conflictoAlConfirmar(Map<String, String> valores) {
-        if (proveedorRepository.findByDni(valores.get("dni")).isPresent()) {
-            return Optional.of("Ya existe un proveedor con el DNI " + valores.get("dni") + " (se registró después de la vista previa). No se modifica.");
+        String dni = valores.get("dni");
+        if (dni != null && !dni.isBlank() && proveedorRepository.findByDni(dni).isPresent()) {
+            return Optional.of("Ya existe un proveedor con el DNI " + dni + " (se registró después de la vista previa). No se modifica.");
+        }
+        String ruc = valores.get("ruc");
+        if (ruc != null && !ruc.isBlank() && proveedorRepository.findByRuc(ruc).isPresent()) {
+            return Optional.of("Ya existe un proveedor con el RUC " + ruc + " (se registró después de la vista previa). No se modifica.");
         }
         String zonaId = valores.get("zonaId");
         if (zonaId != null && !zonaId.isBlank()
@@ -151,9 +208,16 @@ public class ImportacionProveedores implements TipoImportacion<ImportacionProvee
         String zonaId = v.get("zonaId");
         proveedorService.crear(new ProveedorRequest(
                 v.get("nombre"),
-                v.get("dni"),
+                vacioANull(v.get("dni")),
                 telefono == null || telefono.isBlank() ? null : telefono,
-                zonaId == null || zonaId.isBlank() ? null : UUID.fromString(zonaId)));
+                zonaId == null || zonaId.isBlank() ? null : UUID.fromString(zonaId),
+                v.getOrDefault("tipoPersona", TipoPersona.NATURAL.name()),
+                vacioANull(v.get("ruc")),
+                vacioANull(v.get("razonSocial"))));
+    }
+
+    private static String vacioANull(String valor) {
+        return valor == null || valor.isBlank() ? null : valor;
     }
 
     // ------------------------------------------------------------------------------------------ lectura
@@ -164,10 +228,59 @@ public class ImportacionProveedores implements TipoImportacion<ImportacionProvee
             return null;
         }
         if (texto.isEmpty()) {
-            errores.add("DNI: es obligatorio.");
             return null;
         }
         return normalizarDni(fila.celda(DNI.clave()), errores).orElse(null);
+    }
+
+    private TipoPersona leerTipo(FilaCruda fila, List<String> errores) {
+        String texto = ReglasCelda.texto(fila, TIPO, errores);
+        if (texto == null) {
+            return null;
+        }
+        String plegado = BusquedaTexto.plegar(texto);
+        if (plegado.isEmpty() || plegado.equals(BusquedaTexto.plegar(TIPO_NATURAL)) || plegado.equals("natural")) {
+            return TipoPersona.NATURAL;
+        }
+        if (plegado.equals(BusquedaTexto.plegar(TIPO_EMPRESA))) {
+            return TipoPersona.EMPRESA;
+        }
+        errores.add("Tipo de persona: «" + texto + "» no es válido. Elige «" + TIPO_NATURAL + "» o «" + TIPO_EMPRESA + "».");
+        return null;
+    }
+
+    private static String leerTextoOpcional(FilaCruda fila, ColumnaImportacion columna, int maximo, List<String> errores) {
+        String texto = ReglasCelda.texto(fila, columna, errores);
+        if (texto == null || texto.isEmpty()) {
+            return null;
+        }
+        if (texto.length() > maximo) {
+            errores.add(columna.encabezado() + ": tiene " + texto.length() + " caracteres y el máximo es " + maximo + ".");
+            return null;
+        }
+        return texto;
+    }
+
+    private String leerRuc(FilaCruda fila, List<String> errores) {
+        String texto = ReglasCelda.texto(fila, RUC, errores);
+        if (texto == null || texto.isEmpty()) {
+            return null;
+        }
+        return normalizarRuc(fila.celda(RUC.clave()), errores).orElse(null);
+    }
+
+    /** El RUC de una celda: 11 digitos (se admiten espacios), como texto o como numero. Otra cosa agrega un error. */
+    static Optional<String> normalizarRuc(CeldaLeida celda, List<String> errores) {
+        if (celda.problematica() || celda.vacia()) {
+            return Optional.empty();
+        }
+        String limpio = ReglasCelda.limpiar(celda.texto()).replace(" ", "");
+        if (!ONCE_DIGITOS.matcher(limpio).matches()) {
+            errores.add("RUC: «" + celda.texto() + "» no es un RUC válido: debe tener exactamente 11 dígitos"
+                    + (SOLO_DIGITOS.matcher(limpio).matches() ? " (tiene " + limpio.length() + ")." : " y solo números."));
+            return Optional.empty();
+        }
+        return Optional.of(limpio);
     }
 
     /**

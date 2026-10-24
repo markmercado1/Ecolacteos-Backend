@@ -51,6 +51,7 @@ public class CatalogoPublicoService {
     private final InventarioService inventarioService;
     private final ReglaVencimiento reglaVencimiento;
     private final ReservaCompromisos compromisos;
+    private final ConfiguracionIgvService igvService;
     private final ReservaConfig reservaConfig;
     private final TransactionTemplate transaccion;
     private final int umbralPocasUnidades;
@@ -65,25 +66,26 @@ public class CatalogoPublicoService {
     public CatalogoPublicoService(PresentacionRepository presentacionRepository, PrecioQuesoRepository precioRepository,
                                   InventarioService inventarioService, ReglaVencimiento reglaVencimiento,
                                   ReservaCompromisos compromisos, ReservaConfig reservaConfig,
-                                  PlatformTransactionManager transactionManager,
+                                  PlatformTransactionManager transactionManager, ConfiguracionIgvService igvService,
                                   @Value("${app.catalogo.umbral-pocas-unidades:5}") int umbralPocasUnidades,
                                   @Value("${app.catalogo.cache-segundos:30}") int cacheSegundos) {
         this(presentacionRepository, precioRepository, inventarioService, reglaVencimiento, compromisos, reservaConfig,
-                transactionManager, umbralPocasUnidades, cacheSegundos, Clock.systemUTC());
+                transactionManager, igvService, umbralPocasUnidades, cacheSegundos, Clock.systemUTC());
     }
 
     // Para pruebas con un reloj controlado.
     CatalogoPublicoService(PresentacionRepository presentacionRepository, PrecioQuesoRepository precioRepository,
                            InventarioService inventarioService, ReglaVencimiento reglaVencimiento,
                            ReservaCompromisos compromisos, ReservaConfig reservaConfig,
-                           PlatformTransactionManager transactionManager, int umbralPocasUnidades, int cacheSegundos,
-                           Clock reloj) {
+                           PlatformTransactionManager transactionManager, ConfiguracionIgvService igvService,
+                           int umbralPocasUnidades, int cacheSegundos, Clock reloj) {
         this.presentacionRepository = presentacionRepository;
         this.precioRepository = precioRepository;
         this.inventarioService = inventarioService;
         this.reglaVencimiento = reglaVencimiento;
         this.compromisos = compromisos;
         this.reservaConfig = reservaConfig;
+        this.igvService = igvService;
         this.umbralPocasUnidades = umbralPocasUnidades;
         this.ttlMillis = Math.max(cacheSegundos, 0) * 1000L;
         this.reloj = reloj;
@@ -114,6 +116,8 @@ public class CatalogoPublicoService {
         if (candidatas.isEmpty()) return new CatalogoPublicoResponse(List.of());
 
         Map<UUID, PrecioQueso> precios = preciosPublicosVigentes(candidatas, hoy);
+        // Fase G: "Incluye IGV" solo para lo que hoy se vende gravado con tasa vigente (vacio mientras el calculo este apagado).
+        java.util.Set<UUID> incluyenIgv = igvService.gravadasConTasa(candidatas.stream().map(Presentacion::getId).toList(), hoy);
         // La disponibilidad se mide para la primera fecha de retiro posible (hoy si todavia se atiende; si no, el siguiente
         // dia de atencion dentro del plazo). La comprobacion exacta, para la fecha elegida, ocurre al reservar.
         LocalDate fechaReferencia = reservaConfig.actuales().primeraFechaDisponible(ahora).orElse(hoy);
@@ -133,7 +137,8 @@ public class CatalogoPublicoService {
                     pr.getId(), pr.getNombre(), pr.getContenidoCantidad(),
                     pr.getContenidoUnidad() != null ? pr.getContenidoUnidad().name() : null,
                     pr.getUnidadConteo(), foto, precio == null ? null : precio.getPrecio(), precio == null, estado,
-                    estado == DisponibilidadPublica.POCAS_UNIDADES ? disponible : null));
+                    estado == DisponibilidadPublica.POCAS_UNIDADES ? disponible : null,
+                    precio != null && incluyenIgv.contains(pr.getId())));
             primeraDeProducto.putIfAbsent(producto.getId(), pr);
         }
 

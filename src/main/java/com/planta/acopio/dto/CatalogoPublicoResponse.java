@@ -35,6 +35,16 @@ public record CatalogoPublicoResponse(List<Producto> productos) {
         DisponibilidadPublica disponibilidad,
         // Unidades que se pueden reservar, SOLO cuando quedan pocas (POCAS_UNIDADES); null en cualquier otro caso: con mucho stock
         // no se publica la cantidad. Mide la primera fecha de retiro posible; la comprobacion exacta sigue siendo al reservar.
-        Integer unidadesDisponibles
-    ) {}
+        Integer unidadesDisponibles,
+        // Fase G: true solo si el calculo de IGV esta activo y hoy la presentacion se vende GRAVADA con una tasa vigente: el
+        // precio publicado "Incluye IGV". false en cualquier otro caso (sin clasificar, exonerada, inafecta o calculo apagado).
+        boolean incluyeIgv
+    ) {
+        public Presentacion(UUID id, String nombre, BigDecimal contenidoCantidad, String contenidoUnidad, String unidadConteo,
+                            String fotoUrl, BigDecimal precio, boolean precioAConfirmar, DisponibilidadPublica disponibilidad,
+                            Integer unidadesDisponibles) {
+            this(id, nombre, contenidoCantidad, contenidoUnidad, unidadConteo, fotoUrl, precio, precioAConfirmar, disponibilidad,
+                    unidadesDisponibles, false);
+        }
+    }
 }

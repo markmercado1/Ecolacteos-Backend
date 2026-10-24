@@ -158,9 +158,10 @@ class ExportacionExcelIntegrationTest {
         assertThat(todos.getLastRowNum()).isEqualTo(26);
         assertThat(columna(todos, 0)).hasSize(26).doesNotHaveDuplicates();
         // El DNI conserva los ceros iniciales y es TEXTO, no numero.
-        assertThat(todos.getRow(1).getCell(1).getCellType()).isEqualTo(CellType.STRING);
-        assertThat(columna(todos, 1)).allMatch(dni -> dni.matches("\\d{8}") && dni.startsWith("0"));
-        assertThat(columna(todos, 2)).containsOnly("+51987654321"); // telefono con "+" intacto, no neutralizado
+        assertThat(todos.getRow(1).getCell(2).getCellType()).isEqualTo(CellType.STRING); // Fase G: col 1 = tipo de persona
+        assertThat(columna(todos, 1)).containsOnly("Persona natural");
+        assertThat(columna(todos, 2)).allMatch(dni -> dni.matches("\\d{8}") && dni.startsWith("0"));
+        assertThat(columna(todos, 5)).containsOnly("+51987654321"); // telefono con "+" intacto, no neutralizado
 
         // Busqueda sin acentos ni mayusculas: solo los 25 "Niño Pérez".
         Sheet buscados = abrir(excel.exportar("proveedores", "Proveedores", ColumnasExportacion.PROVEEDORES,
@@ -171,7 +172,7 @@ class ExportacionExcelIntegrationTest {
         Sheet inactivosDelSur = abrir(excel.exportar("proveedores", "Proveedores", ColumnasExportacion.PROVEEDORES,
                 pagina -> proveedorService.buscar(zonaSur.getId(), false, null, pagina)));
         assertThat(columna(inactivosDelSur, 0)).containsExactly("Rosa Huamán " + s);
-        assertThat(columna(inactivosDelSur, 4)).containsExactly("No");
+        assertThat(columna(inactivosDelSur, 7)).containsExactly("No"); // Fase G: Activo pasa a la columna 7
     }
 
     @Test

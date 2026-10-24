@@ -7,6 +7,7 @@ import com.planta.acopio.dto.ProveedorRequest;
 import com.planta.acopio.dto.ProveedorUpdateRequest;
 import com.planta.acopio.entity.HistorialZona;
 import com.planta.acopio.entity.Proveedor;
+import com.planta.acopio.entity.TipoPersona;
 import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.entity.Zona;
 import com.planta.acopio.exception.ConflictoNegocioException;
@@ -29,6 +30,7 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Objects;
 import java.util.UUID;
 
 @Service
@@ -41,6 +43,7 @@ public class ProveedorService {
     private final Clock reloj;
 
     private static final int MAX_MOTIVO = 200;
+    private static final int MAX_NOMBRE = 150;
 
     @Autowired
     public ProveedorService(ProveedorRepository proveedorRepository, ZonaRepository zonaRepository,
@@ -60,13 +63,12 @@ public class ProveedorService {
 
     @Transactional
     public ProveedorAdminResponse crear(ProveedorRequest dto) {
-        if (proveedorRepository.findByDni(dto.dni()).isPresent()) {
-            throw new ConflictoNegocioException("Ya existe un proveedor con DNI " + dto.dni());
-        }
+        Documentos doc = validarDocumentos(tipoPersona(dto.tipoPersona(), TipoPersona.NATURAL),
+                dto.nombre(), dto.dni(), dto.ruc(), dto.razonSocial(), null);
+        verificarDocumentosUnicos(doc, null);
 
         Proveedor proveedor = new Proveedor();
-        proveedor.setNombre(dto.nombre());
-        proveedor.setDni(dto.dni());
+        aplicar(proveedor, doc);
         proveedor.setTelefono(dto.telefono());
         proveedor.setCodigoQr(UUID.randomUUID().toString());
 
@@ -136,17 +138,20 @@ public class ProveedorService {
     // Auditoria CRUD (prioridad ALTA): antes la unica "actualizacion" posible
     // era reasignar zona. dni se puede corregir (typo de digitacion), pero
     // sigue siendo unico -- se revalida excluyendo al propio proveedor.
+    //
+    // Fase G: las reglas de documentos dependen del tipo de persona (ver validarDocumentos). Un DNI o RUC que no cambia
+    // se conserva tal cual aunque no cumpla el formato actual (registros anteriores): se informa en la revision de
+    // documentos, no bloquea la edicion del resto de la ficha.
     @Transactional
     public ProveedorAdminResponse actualizar(UUID id, ProveedorUpdateRequest dto) {
         Proveedor proveedor = proveedorRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Proveedor no encontrado: " + id));
 
-        proveedorRepository.findByDni(dto.dni())
-                .filter(otro -> !otro.getId().equals(id))
-                .ifPresent(otro -> { throw new ConflictoNegocioException("Ya existe un proveedor con DNI " + dto.dni()); });
+        Documentos doc = validarDocumentos(tipoPersona(dto.tipoPersona(), proveedor.getTipoPersona()),
+                dto.nombre(), dto.dni(), dto.ruc(), dto.razonSocial(), proveedor);
+        verificarDocumentosUnicos(doc, id);
 
-        proveedor.setNombre(dto.nombre());
-        proveedor.setDni(dto.dni());
+        aplicar(proveedor, doc);
         proveedor.setTelefono(dto.telefono());
 
         return toAdminResponse(proveedor);
@@ -216,6 +221,106 @@ public class ProveedorService {
                 .map(this::toPublicoResponse).toList();
     }
 
+    // ------------------------------------------------------------------ Fase G: documentos
+
+    /** Datos de identificacion ya validados y normalizados. */
+    public record Documentos(TipoPersona tipo, String nombre, String dni, String ruc, String razonSocial) {}
+
+    static TipoPersona tipoPersona(String valor, TipoPersona porDefecto) {
+        if (valor == null || valor.isBlank()) return porDefecto;
+        try {
+            return TipoPersona.valueOf(valor.trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ValidacionNegocioException("Tipo de persona no válido: «" + valor + "». Usa NATURAL o EMPRESA.");
+        }
+    }
+
+    // Persona natural: nombre y DNI (8 digitos) obligatorios, RUC opcional (10 + su DNI + verificador), sin razon social.
+    // Empresa: RUC (20... con verificador) y razon social obligatorios, sin DNI; nombre opcional (por defecto la razon social).
+    // `actual` = ficha que se edita (null al crear): un DNI o RUC igual al guardado no se revalida.
+    public static Documentos validarDocumentos(TipoPersona tipo, String nombre, String dni, String ruc, String razonSocial,
+                                        Proveedor actual) {
+        String nombreLimpio = nombre == null ? "" : nombre.trim();
+        String razonLimpia = razonSocial == null || razonSocial.isBlank() ? null : razonSocial.trim();
+        String dniGuardado = actual == null ? null : actual.getDni();
+        String rucGuardado = actual == null ? null : actual.getRuc();
+        String dniFinal = sinCambio(dniGuardado, dni) ? dniGuardado : DocumentoIdentidad.limpiar(dni);
+        String rucFinal = sinCambio(rucGuardado, ruc) ? rucGuardado : DocumentoIdentidad.limpiar(ruc);
+        boolean dniNuevo = actual == null || !Objects.equals(dniFinal, dniGuardado);
+        boolean rucNuevo = actual == null || !Objects.equals(rucFinal, rucGuardado);
+
+        if (tipo == TipoPersona.NATURAL) {
+            if (nombreLimpio.isEmpty()) throw new ValidacionNegocioException("El nombre es obligatorio.");
+            if (dniFinal == null) throw new ValidacionNegocioException("El DNI es obligatorio para una persona natural.");
+            if (dniNuevo && !DocumentoIdentidad.dniValido(dniFinal)) {
+                throw new ValidacionNegocioException("El DNI «" + dniFinal + "» no es válido: debe tener exactamente 8 dígitos.");
+            }
+            if (razonLimpia != null) {
+                throw new ValidacionNegocioException(
+                        "La razón social solo se registra para una empresa; una persona natural se identifica con su nombre.");
+            }
+            if (rucFinal != null && (rucNuevo || dniNuevo)) {
+                validarRuc(rucFinal, DocumentoIdentidad.PREFIJO_RUC_NATURAL, "una persona natural");
+                if (!rucFinal.substring(2, 10).equals(dniFinal)) {
+                    throw new ValidacionNegocioException("El RUC " + rucFinal + " no corresponde al DNI " + dniFinal
+                            + ": el RUC de una persona natural es 10 + su DNI + un dígito verificador.");
+                }
+            }
+        } else {
+            if (dniFinal != null) {
+                throw new ValidacionNegocioException("Una empresa no registra DNI: se identifica con su RUC.");
+            }
+            if (rucFinal == null) throw new ValidacionNegocioException("El RUC es obligatorio para una empresa.");
+            if (rucNuevo) validarRuc(rucFinal, DocumentoIdentidad.PREFIJO_RUC_EMPRESA, "una empresa");
+            if (razonLimpia == null) throw new ValidacionNegocioException("La razón social es obligatoria para una empresa.");
+            if (razonLimpia.length() > MAX_NOMBRE) {
+                throw new ValidacionNegocioException("La razón social no puede superar " + MAX_NOMBRE + " caracteres.");
+            }
+            if (nombreLimpio.isEmpty()) nombreLimpio = razonLimpia;
+        }
+        if (nombreLimpio.length() > MAX_NOMBRE) {
+            throw new ValidacionNegocioException("El nombre no puede superar " + MAX_NOMBRE + " caracteres.");
+        }
+        return new Documentos(tipo, nombreLimpio, dniFinal, rucFinal, razonLimpia);
+    }
+
+    private static boolean sinCambio(String guardado, String enviado) {
+        return guardado != null && enviado != null && guardado.equals(enviado.trim());
+    }
+
+    private static void validarRuc(String ruc, String prefijo, String quien) {
+        if (!DocumentoIdentidad.rucValido(ruc)) {
+            throw new ValidacionNegocioException(
+                    "El RUC «" + ruc + "» no es válido: debe tener 11 dígitos y un dígito verificador correcto.");
+        }
+        if (!ruc.startsWith(prefijo)) {
+            throw new ValidacionNegocioException("El RUC de " + quien + " empieza con " + prefijo + ".");
+        }
+    }
+
+    private void verificarDocumentosUnicos(Documentos doc, UUID propioId) {
+        if (doc.dni() != null) {
+            proveedorRepository.findByDni(doc.dni())
+                    .filter(otro -> !otro.getId().equals(propioId))
+                    .ifPresent(otro -> { throw new ConflictoNegocioException("Ya existe un proveedor con DNI " + doc.dni()); });
+        }
+        if (doc.ruc() != null) {
+            proveedorRepository.findByRuc(doc.ruc())
+                    .filter(otro -> !otro.getId().equals(propioId))
+                    .ifPresent(otro -> {
+                        throw new ConflictoNegocioException("Ya existe un proveedor con RUC " + doc.ruc() + " (" + otro.getNombre() + ")");
+                    });
+        }
+    }
+
+    private static void aplicar(Proveedor proveedor, Documentos doc) {
+        proveedor.setTipoPersona(doc.tipo());
+        proveedor.setNombre(doc.nombre());
+        proveedor.setDni(doc.dni());
+        proveedor.setRuc(doc.ruc());
+        proveedor.setRazonSocial(doc.razonSocial());
+    }
+
     private void cerrarPeriodo(HistorialZona periodo, LocalDateTime ahora) {
         LocalDateTime fin = ahora.isBefore(periodo.getInicioEn()) ? periodo.getInicioEn() : ahora;
         periodo.setFinEn(fin);
@@ -250,7 +355,8 @@ public class ProveedorService {
                 p.getId(), p.getNombre(), p.getDni(), p.getTelefono(),
                 p.getZonaActual() != null ? p.getZonaActual().getId() : null,
                 p.getZonaActual() != null ? p.getZonaActual().getNombre() : null,
-                p.getCodigoQr(), p.getActivo());
+                p.getCodigoQr(), p.getActivo(),
+                p.getTipoPersona() != null ? p.getTipoPersona().name() : null, p.getRuc(), p.getRazonSocial());
     }
 
     private ProveedorPublicoResponse toPublicoResponse(Proveedor p) {

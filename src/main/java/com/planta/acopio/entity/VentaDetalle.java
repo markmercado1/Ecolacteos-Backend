@@ -37,6 +37,21 @@ public class VentaDetalle {
     @Column(insertable = false, updatable = false, precision = 10, scale = 2)
     private BigDecimal subtotal;
 
+    // Fase G (V32): foto tributaria al venderse. Todo null = sin determinar (venta anterior, calculo de IGV apagado, presentacion
+    // sin clasificar o gravada sin tasa vigente). valorVenta + igv = subtotal (el precio ya incluye el IGV). Nunca se recalcula.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "afectacion_igv", length = 12)
+    private AfectacionIgv afectacionIgv;
+
+    @Column(name = "tasa_igv", precision = 5, scale = 2)
+    private BigDecimal tasaIgv;
+
+    @Column(name = "valor_venta", precision = 10, scale = 2)
+    private BigDecimal valorVenta;
+
+    @Column(precision = 10, scale = 2)
+    private BigDecimal igv;
+
     public VentaDetalle() {}
 
     public UUID getId() { return id; }
@@ -50,4 +65,15 @@ public class VentaDetalle {
     public BigDecimal getPrecioUnitario() { return precioUnitario; }
     public void setPrecioUnitario(BigDecimal precioUnitario) { this.precioUnitario = precioUnitario; }
     public BigDecimal getSubtotal() { return subtotal; }
+    public AfectacionIgv getAfectacionIgv() { return afectacionIgv; }
+    public BigDecimal getTasaIgv() { return tasaIgv; }
+    public BigDecimal getValorVenta() { return valorVenta; }
+    public BigDecimal getIgv() { return igv; }
+
+    public void setDesgloseIgv(AfectacionIgv afectacionIgv, BigDecimal tasaIgv, BigDecimal valorVenta, BigDecimal igv) {
+        this.afectacionIgv = afectacionIgv;
+        this.tasaIgv = tasaIgv;
+        this.valorVenta = valorVenta;
+        this.igv = igv;
+    }
 }

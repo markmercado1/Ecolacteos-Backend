@@ -84,13 +84,13 @@ public class PagoController {
     // ver el historial por proveedor, uno a la vez.
     @Operation(summary = "Listar todos los pagos (paginado)", description = "Rol requerido: ADMIN o RECEPCION. "
             + "Orden: semana más reciente primero y, dentro de la misma semana, el pago creado más recientemente primero. "
-            + "`busqueda` (opcional) busca en el nombre o el DNI del proveedor entre TODOS los pagos (contiene, sin distinguir "
+            + "`busqueda` (opcional) busca en el nombre, el DNI, el RUC o la razón social del proveedor entre TODOS los pagos (contiene, sin distinguir "
             + "mayúsculas ni acentos). page empieza en 0; size se acota a 1..100.")
     @ApiResponse(responseCode = "200", description = "Página de pagos", content = @Content(schema = @Schema(implementation = PaginaResponse.class)))
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','RECEPCION')")
     public ResponseEntity<PaginaResponse<PagoResponse>> listar(
-            @Parameter(description = "Nombre o DNI del proveedor (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
+            @Parameter(description = "Nombre, DNI, RUC o razón social del proveedor (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda,
             @Parameter(description = "Número de página, empieza en 0") @RequestParam(defaultValue = "0") int page,
             @Parameter(description = "Tamaño de página (máx. 100)") @RequestParam(defaultValue = "20") int size) {
         return ResponseEntity.ok(PaginaResponse.de(pagoService.listar(busqueda, Paginacion.de(page, size))));

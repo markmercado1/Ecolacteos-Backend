@@ -6,6 +6,7 @@ import com.planta.acopio.dto.DetalleVentaResponse;
 import com.planta.acopio.dto.VentaRequest;
 import com.planta.acopio.dto.VentaResponse;
 import com.planta.acopio.dto.VentaResumenResponse;
+import com.planta.acopio.entity.AfectacionIgv;
 import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Reserva;
@@ -67,11 +68,13 @@ public class VentaService {
     private final PrecioQuesoService precioQuesoService;
     private final InventarioService inventarioService;
     private final ReservaService reservaService;
+    private final ConfiguracionIgvService igvService;
 
     public VentaService(VentaRepository repository, VentaDetalleRepository detalleRepository,
                          PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
                          EntityManager entityManager, PrecioQuesoService precioQuesoService,
-                         InventarioService inventarioService, ReservaService reservaService) {
+                         InventarioService inventarioService, ReservaService reservaService,
+                         ConfiguracionIgvService igvService) {
         this.repository = repository;
         this.detalleRepository = detalleRepository;
         this.presentacionRepository = presentacionRepository;
@@ -80,6 +83,7 @@ public class VentaService {
         this.precioQuesoService = precioQuesoService;
         this.inventarioService = inventarioService;
         this.reservaService = reservaService;
+        this.igvService = igvService;
     }
 
     // Contrato movil (SyncService.procesarLoteVentas y POST /api/ventas directo): sin cambios de forma. Se
@@ -186,6 +190,11 @@ public class VentaService {
             detalle.setPresentacion(r.presentacion());
             detalle.setCantidad(r.cantidad());
             detalle.setPrecioUnitario(r.precioUnitario());
+            // Fase G: el precio ya incluye el IGV; si corresponde se desglosa DENTRO del subtotal (null = sin determinar,
+            // siempre mientras el calculo este apagado). Mismo subtotal que la columna generada: cantidad x precio.
+            CalculoIgv.Desglose igv = igvService.desglosar(r.presentacion().getId(), fecha,
+                    r.precioUnitario().multiply(BigDecimal.valueOf(r.cantidad())));
+            if (igv != null) detalle.setDesgloseIgv(igv.afectacion(), igv.tasa(), igv.valorVenta(), igv.igv());
             detallesGuardados.add(detalleRepository.save(detalle));
         }
         entityManager.flush();
@@ -288,12 +297,41 @@ public class VentaService {
     }
 
     private VentaResumenResponse toResumenResponse(Venta v) {
-        List<DetalleVentaResponse> detalles = detalleRepository.findByVentaId(v.getId()).stream()
+        List<VentaDetalle> lineas = detalleRepository.findByVentaId(v.getId());
+        List<DetalleVentaResponse> detalles = lineas.stream()
                 .map(d -> new DetalleVentaResponse(
                         d.getPresentacion().getId(), d.getPresentacion().getNombre(), d.getPresentacion().getProducto().getNombre(),
-                        d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal()))
+                        d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal(),
+                        d.getAfectacionIgv() != null ? d.getAfectacionIgv().name() : null, d.getTasaIgv(), d.getValorVenta(), d.getIgv()))
                 .toList();
-        return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(), detalles, v.getTotal());
+        return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(), detalles, v.getTotal(), resumenIgv(lineas, v.getTotal()));
+    }
+
+    // Fase G: suma de la foto tributaria de las lineas. Nada se recalcula: una linea sin foto queda "sin determinar".
+    static VentaResumenResponse.ResumenIgvVenta resumenIgv(List<VentaDetalle> lineas, BigDecimal total) {
+        BigDecimal gravadas = BigDecimal.ZERO, exoneradas = BigDecimal.ZERO, inafectas = BigDecimal.ZERO, igv = BigDecimal.ZERO;
+        BigDecimal determinado = BigDecimal.ZERO;
+        int conFoto = 0;
+        for (VentaDetalle d : lineas) {
+            if (d.getAfectacionIgv() == null) continue;
+            conFoto++;
+            switch (d.getAfectacionIgv()) {
+                case GRAVADO -> { gravadas = gravadas.add(d.getValorVenta()); igv = igv.add(d.getIgv()); }
+                case EXONERADO -> exoneradas = exoneradas.add(d.getValorVenta());
+                case INAFECTO -> inafectas = inafectas.add(d.getValorVenta());
+                default -> { }
+            }
+            determinado = determinado.add(d.getValorVenta()).add(d.getIgv());
+        }
+        String estado = conFoto == 0 ? "SIN_DETERMINAR" : conFoto == lineas.size() ? "DETERMINADO" : "PARCIAL";
+        BigDecimal sinDeterminar = total == null ? null : total.subtract(determinado).setScale(2, RoundingMode.HALF_UP);
+        boolean incluyeIgv = lineas.stream().anyMatch(d -> d.getAfectacionIgv() == AfectacionIgv.GRAVADO);
+        return new VentaResumenResponse.ResumenIgvVenta(estado, incluyeIgv, escala(gravadas), escala(exoneradas), escala(inafectas),
+                escala(igv), sinDeterminar);
+    }
+
+    private static BigDecimal escala(BigDecimal v) {
+        return v.setScale(2, RoundingMode.HALF_UP);
     }
 
     private record DetalleResuelto(Presentacion presentacion, int cantidad, BigDecimal precioUnitario) {}

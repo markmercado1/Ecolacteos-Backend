@@ -122,9 +122,15 @@ class ImportacionProveedoresIntegrationTest {
         return List.of("Proveedor Import " + i + " " + sufijo, dni(i), "9876543" + String.format("%02d", i), zonaNombre == null ? "" : zonaNombre);
     }
 
+    // Fase G (plantilla v2): las filas de estas pruebas siguen escritas como (nombre, dni, telefono, zona) de persona natural; se
+    // ubican en las columnas de la plantilla actual (tipo, nombre, dni, ruc, razon social, telefono, zona) con tipo, RUC y razon vacios.
+    private static List<List<Object>> v2(List<List<Object>> filas) {
+        return filas.stream().map(f -> List.<Object>of("", f.get(0), f.get(1), "", "", f.get(2), f.get(3))).toList();
+    }
+
     private MockMultipartFile archivo(List<List<Object>> filas) {
         return new MockMultipartFile("archivo", "proveedores.xlsx", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                ExcelDePrueba.conFilas(plantillaBytes, filas));
+                ExcelDePrueba.conFilas(plantillaBytes, v2(filas)));
     }
 
     private VistaPreviaImportacionResponse previsualizar(List<List<Object>> filas) {
@@ -195,7 +201,7 @@ class ImportacionProveedoresIntegrationTest {
                 .containsExactly("2:VALIDA", "3:INVALIDA", "4:DUPLICADA", "6:DUPLICADA", "7:INVALIDA");
         assertThat(vista.filas().get(3).mensajes().get(0)).contains("Repetida en el archivo").contains("fila 2");
         assertThat(vista.filas().get(2).mensajes().get(0)).contains("Ya existe un proveedor");
-        assertThat(vista.columnas()).extracting(c -> c.clave()).containsExactly("nombre", "dni", "telefono", "zona");
+        assertThat(vista.columnas()).extracting(c -> c.clave()).containsExactly("tipo", "nombre", "dni", "ruc", "razonSocial", "telefono", "zona");
     }
 
     // -------------------------------------------------------------------------------- confirmar y crear
@@ -306,19 +312,21 @@ class ImportacionProveedoresIntegrationTest {
             assertThat(encabezado.getCell(0).getStringCellValue()).isEqualTo("Fila");
             assertThat(encabezado.getCell(1).getStringCellValue()).isEqualTo("Resultado");
             assertThat(encabezado.getCell(2).getStringCellValue()).isEqualTo("Motivo");
-            assertThat(encabezado.getCell(4).getStringCellValue()).isEqualTo("DNI");
+            assertThat(encabezado.getCell(3).getStringCellValue()).isEqualTo("Tipo de persona");
+            assertThat(encabezado.getCell(5).getStringCellValue()).isEqualTo("DNI");
+            assertThat(encabezado.getCell(6).getStringCellValue()).isEqualTo("RUC");
             assertThat(hoja.getLastRowNum()).isEqualTo(4);
             assertThat(hoja.getRow(1).getCell(0).getNumericCellValue()).isEqualTo(3.0);
             assertThat(hoja.getRow(1).getCell(1).getStringCellValue()).isEqualTo("Inválida");
             assertThat(hoja.getRow(1).getCell(2).getStringCellValue()).contains("DNI").contains("8 dígitos");
-            assertThat(hoja.getRow(1).getCell(4).getStringCellValue()).isEqualTo("12345");
+            assertThat(hoja.getRow(1).getCell(5).getStringCellValue()).isEqualTo("12345");
             assertThat(hoja.getRow(2).getCell(0).getNumericCellValue()).isEqualTo(4.0);
             // El reporte devuelve texto del archivo: lo que parezca formula se neutraliza para que no se ejecute al abrirlo.
-            assertThat(hoja.getRow(2).getCell(3).getStringCellValue()).startsWith("'=HYPERLINK");
+            assertThat(hoja.getRow(2).getCell(4).getStringCellValue()).startsWith("'=HYPERLINK");
             assertThat(hoja.getRow(3).getCell(2).getStringCellValue()).contains("Teléfono").contains("celular peruano");
             assertThat(hoja.getRow(4).getCell(0).getNumericCellValue()).isEqualTo(6.0);
             assertThat(hoja.getRow(4).getCell(2).getStringCellValue()).contains("contiene una fórmula");
-            assertThat(hoja.getRow(4).getCell(3).getStringCellValue()).isEqualTo("(fórmula)");
+            assertThat(hoja.getRow(4).getCell(4).getStringCellValue()).isEqualTo("(fórmula)");
         }
     }
 
@@ -567,7 +575,7 @@ class ImportacionProveedoresIntegrationTest {
     void ningunArchivoInvalidoDejaRastroNiModificaDatos() {
         long proveedores = proveedorRepository.count();
         long importaciones = importacionRepository.count();
-        byte[] valido = ExcelDePrueba.conFilas(plantillaBytes, List.of(fila(1, null)));
+        byte[] valido = ExcelDePrueba.conFilas(plantillaBytes, v2(List.of(fila(1, null))));
 
         List<MockMultipartFile> hostiles = List.of(
                 new MockMultipartFile("archivo", "datos.xlsm", "application/octet-stream", valido),
