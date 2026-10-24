@@ -6,6 +6,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.math.BigDecimal;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -25,4 +26,7 @@ public interface AjustePagoRepository extends JpaRepository<AjustePago, UUID> {
     BigDecimal sumaLitrosDiferenciaDelRegistro(@Param("registroAcopioId") UUID registroAcopioId);
 
     List<AjustePago> findByPagoId(UUID pagoId);
+
+    // Pagos efectivos: los ajustes de litros de varias liquidaciones, para el saldo.
+    List<AjustePago> findByPagoIdIn(Collection<UUID> pagoIds);
 }
