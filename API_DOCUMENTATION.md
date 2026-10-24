@@ -384,6 +384,47 @@ del panel):
   promedio por mes y suma semanal).
 - **No cambian:** el score de confianza por zona (es del proveedor, no de una entrega), el filtro de proveedores por zona (estado actual) y los endpoints de zonas, rutas y comunicados.
 
+## 15. Documentos del proveedor: DNI y RUC (Fase G, V31)
+
+Migración `V31__documentos_proveedor.sql` (**aditiva, no modifica ningún valor**): `proveedor.tipo_persona` (`NATURAL` por defecto: todos los existentes), `ruc` (11 dígitos, único) y
+`razon_social`; `dni` deja de ser NOT NULL (sigue siendo único). La base exige: natural ⇒ con DNI y sin razón social; empresa ⇒ con RUC y razón social y **sin DNI**.
+
+- **Reglas (servidor, al crear y al editar):** persona natural = nombre y **DNI de 8 dígitos** obligatorios, **RUC opcional** en la **misma ficha** (debe ser `10` + su DNI + dígito verificador);
+  empresa = **RUC** (empieza con `20`, dígito verificador módulo 11) y **razón social** obligatorios, sin DNI; su `nombre` es opcional (si falta se usa la razón social). DNI y RUC únicos (409).
+  Espacios, guiones y puntos en DNI/RUC se quitan. Solo se valida la **forma** (no se consulta a SUNAT).
+- **`POST /api/proveedores`** y **`PUT /api/proveedores/{id}`** (ADMIN): campos nuevos al final del cuerpo, `tipoPersona` (`NATURAL`|`EMPRESA`), `ruc`, `razonSocial`. **Compatibles**: un cuerpo
+  anterior (nombre, dni, teléfono, zona) crea una persona natural como antes; en la edición, `tipoPersona` nulo conserva el tipo. Un DNI o RUC **sin cambios** se conserva aunque no cumpla el formato
+  actual (registros anteriores): no bloquea editar el resto de la ficha.
+- **`ProveedorAdminResponse`** agrega al final `tipoPersona`, `ruc`, `razonSocial`; `dni` es nulo en una empresa. La lista operativa/sincronización del **móvil no cambia** (sigue sin DNI ni RUC).
+- **`GET /api/admin/proveedores/revision-documentos`** (ADMIN, solo lectura): `{totalProveedores, proveedoresConObservaciones, observaciones: [{proveedorId, nombre, tipoPersona, dni, ruc, activo,
+  codigo, detalle}]}` con `codigo` = `DNI_FORMATO`, `DNI_PARECE_RUC`, `DNI_DUPLICADO_PROBABLE` (iguales salvo espacios o ceros), `RUC_INVALIDO`, `RUC_NO_COINCIDE_DNI` o `POSIBLE_MISMA_PERSONA`
+  (el RUC 10 de una ficha contiene el DNI de otra). **No corrige nada** (decisión del usuario: conservar y reportar).
+- **Búsqueda** por RUC y razón social además de nombre y DNI en `GET /api/proveedores`, `GET /api/pagos`, `GET /api/pagos-proveedor` y sus exportaciones.
+- **Excel:** la exportación de proveedores agrega «Tipo de persona», «RUC» y «Razón social». La **plantilla de importación pasa a la versión 2** (tipo de persona con lista, nombre, DNI, RUC,
+  razón social, teléfono, zona) y valida con las **mismas reglas** que la pantalla; una plantilla v1 se rechaza pidiendo descargar la actual. Un DNI **o RUC** existente se omite.
+- **Boleta PDF** de pago a proveedor: muestra DNI y RUC cuando existen, y la razón social de una empresa. **El cálculo de los pagos no cambia** y no se presupone ninguna exoneración.
+
+## 16. IGV configurable en ventas (Fase G, V32)
+
+Migración `V32__igv_configurable.sql` (**aditiva y neutra**: no inserta tasas ni clasifica productos; no toca precios, ventas ni reservas). **Los precios son finales** (lo publicado es lo que paga
+el cliente): el IGV **nunca se suma**; cuando corresponde se **desglosa dentro** del precio.
+
+- **Cálculo APAGADO por defecto**: `app.tributario.igv.calculo-habilitado` (`TRIBUTARIO_IGV_CALCULO_HABILITADO`, `false`). Es la decisión del usuario mientras el **contador** no confirme la afectación
+  de cada producto, la tasa y el redondeo. Apagado ⇒ las ventas se registran **exactamente como antes** (sin foto tributaria), el catálogo no dice «Incluye IGV» y el estado es **PENDIENTE**,
+  aunque la configuración esté preparada.
+- **Configuración (ADMIN, `/api/admin/tributario`, exclusiva de la web):** `GET /estado` (calculoHabilitado, `PENDIENTE`|`ACTIVO`, tasa vigente y programada, presentaciones activas por afectación,
+  avisos); `GET|POST /tasas-igv` (`{tasa, vigenteDesde, motivo}`; 0 < tasa < 100, hasta 2 decimales; una fecha por tasa, 409); `GET /afectaciones?busqueda&page&size` (presentaciones activas con su
+  afectación vigente hoy —`SIN_DEFINIR` si no tienen— y la programada); `GET|POST /presentaciones/{id}/afectaciones` (`{afectacion: GRAVADO|EXONERADO|INAFECTO|SIN_DEFINIR, vigenteDesde, motivo}`).
+  Ambas series son **append-only con vigencia**, motivo y usuario (como los precios). **Ningún producto viene clasificado**.
+- **Con el cálculo encendido**, al vender (web, carrito, retiro de reserva y móvil) cada línea guarda su **foto tributaria** a la **fecha de la venta**: gravada con tasa vigente ⇒ `valorVenta =
+  round(subtotal / (1 + tasa/100), 2)` e `igv = subtotal − valorVenta` (suman exactamente lo cobrado; redondeo **por línea**, a confirmar con el contador); exonerada o inafecta ⇒ IGV 0; sin
+  clasificar o gravada sin tasa ⇒ **sin determinar** (todo nulo). La base lo exige (`ck_venta_detalle_igv`). **Nunca se recalculan** ventas ya registradas ni importes de reservas.
+- **Respuestas:** `DetalleVentaResponse` agrega `afectacionIgv`, `tasaIgv`, `valorVenta`, `igv` (nulos = sin determinar); `VentaResumenResponse` agrega `igv` = `{estado: SIN_DETERMINAR|
+  DETERMINADO|PARCIAL, incluyeIgv, operacionesGravadas, operacionesExoneradas, operacionesInafectas, igvTotal, montoSinDeterminar}`. El catálogo público agrega `incluyeIgv` por presentación (solo
+  gravada con tasa vigente, con el cálculo encendido y con precio). La exportación de ventas agrega «Afectación IGV», «Valor de venta» e «IGV incluido».
+- **Contrato móvil sin cambios** (`VentaRequest`/`VentaResponse`).
+- **Fuera de alcance:** clientes identificados en ventas, facturación electrónica, detracciones, retenciones y cualquier cambio en pagos a proveedores.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*

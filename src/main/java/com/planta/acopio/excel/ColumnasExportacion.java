@@ -100,7 +100,11 @@ public final class ColumnasExportacion {
             entero("Cantidad", l -> l.detalle().cantidad()),
             decimal("Precio unitario", l -> l.detalle().precioUnitario()),
             decimal("Subtotal de la línea", l -> l.detalle().subtotal()),
-            decimal("Total de la venta", l -> l.primera() ? l.venta().total() : null)
+            decimal("Total de la venta", l -> l.primera() ? l.venta().total() : null),
+            // Fase G: foto tributaria de la linea; vacio = sin determinar (ventas anteriores o calculo de IGV apagado).
+            texto("Afectación IGV", 16, l -> l.detalle().afectacionIgv()),
+            decimal("Valor de venta", l -> l.detalle().valorVenta()),
+            decimal("IGV incluido", l -> l.detalle().igv())
     );
 
     /** Aplana ventas en lineas: una fila de Excel por linea vendida. */

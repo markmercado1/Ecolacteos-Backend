@@ -65,6 +65,7 @@ class VentaServiceTest {
     @Mock private PrecioQuesoService precioQuesoService;
     @Mock private InventarioService inventarioService;
     @Mock private ReservaService reservaService;
+    @Mock private ConfiguracionIgvService igvService;
 
     private VentaService service;
     private final Pageable pageable = PageRequest.of(0, 20);
@@ -74,7 +75,7 @@ class VentaServiceTest {
     @BeforeEach
     void setUp() {
         service = new VentaService(repository, detalleRepository, presentacionRepository, usuarioRepository,
-                entityManager, precioQuesoService, inventarioService, reservaService);
+                entityManager, precioQuesoService, inventarioService, reservaService, igvService);
     }
 
     private Producto productoActivo() {

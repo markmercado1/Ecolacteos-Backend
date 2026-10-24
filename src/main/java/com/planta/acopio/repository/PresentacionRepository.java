@@ -102,6 +102,23 @@ public interface PresentacionRepository extends JpaRepository<Presentacion, UUID
             nativeQuery = true)
     Page<Object[]> buscarFilasPrecios(@Param("familiaId") UUID familiaId, @Param("busqueda") String busqueda, Pageable pageable);
 
+    // Fase G: presentaciones activas de productos activos para la configuracion de afectacion al IGV, filtradas por producto o
+    // presentacion (sin acentos ni mayusculas) antes de paginar. Orden fijo: familia, producto, presentacion.
+    String FILTROS_AFECTACION_IGV =
+            "FROM presentacion pr JOIN producto p ON p.id = pr.producto_id JOIN familia f ON f.id = p.familia_id " +
+            "WHERE pr.activo = true AND p.activo = true " +
+            "AND (" + BusquedaTexto.SIN_TERMINO + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
+
+    @Query(value = "SELECT pr.* " + FILTROS_AFECTACION_IGV + "ORDER BY f.nombre, f.id, p.nombre, p.id, pr.nombre, pr.id",
+           countQuery = "SELECT count(*) " + FILTROS_AFECTACION_IGV,
+           nativeQuery = true)
+    Page<Presentacion> buscarParaAfectacionIgv(@Param("busqueda") String busqueda, Pageable pageable);
+
+    @Query("SELECT pr.id FROM Presentacion pr WHERE pr.activo = true AND pr.producto.activo = true")
+    List<UUID> idsActivas();
+
     // Fase 3 (catalogo publico): presentaciones activas de productos activos que CONTROLAN vencimiento (solo esos
     // se publican), con producto y familia en la misma consulta. Orden estable para el catalogo.
     @Query("SELECT pr FROM Presentacion pr JOIN FETCH pr.producto p JOIN FETCH p.familia f "
