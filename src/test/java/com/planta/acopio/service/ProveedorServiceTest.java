@@ -116,6 +116,22 @@ class ProveedorServiceTest {
     }
 
     // El defecto original: un periodo abierto HOY se cerraba con hasta = hoy - 1 (anterior a desde, "invertido").
+    // Criterio de aceptacion de la Fase A: reasignar a la zona en la que ya esta se rechaza (no abre un periodo identico).
+    @Test
+    void reasignarALaMismaZonaSeRechazaSinTocarElHistorial() {
+        Zona actual = zona("Chugur");
+        Proveedor p = proveedorEnZona(actual);
+        when(zonaRepository.findById(actual.getId())).thenReturn(Optional.of(actual));
+
+        assertThatThrownBy(() -> service.reasignarZona(p.getId(), actual.getId(), "Sin cambio"))
+                .isInstanceOf(com.planta.acopio.exception.ConflictoNegocioException.class)
+                .hasMessageContaining("Chugur");
+
+        verify(historialZonaRepository, never()).save(any());
+        verify(historialZonaRepository, never()).findByProveedorIdAndFinEnIsNull(any());
+        assertThat(p.getZonaActual()).isSameAs(actual);
+    }
+
     @Test
     void reasignarElMismoDiaQueSeAbrioElPeriodoNoDejaHastaAnteriorADesde() {
         Zona vieja = zona("Chugur");

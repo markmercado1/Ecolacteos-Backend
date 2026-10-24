@@ -16,6 +16,9 @@ public interface AjusteCalidadEntregaRepository extends JpaRepository<AjusteCali
     // Varias entregas con UNA consulta, en orden cronologico: el ultimo de cada una pisa a los anteriores.
     List<AjusteCalidadEntrega> findByPagoLineaIdInOrderByCreadoEnAscIdAsc(Collection<UUID> pagoLineaIds);
 
+    // Historial de UNA entrega (una entrega pertenece a lo sumo a un pago): del mas reciente al mas antiguo.
+    List<AjusteCalidadEntrega> findByPagoLineaRegistroAcopioIdOrderByCreadoEnDescIdDesc(UUID registroAcopioId);
+
     // Historial de un pago: del mas reciente al mas antiguo.
     List<AjusteCalidadEntrega> findByPagoLineaPagoIdOrderByCreadoEnDescIdDesc(UUID pagoId);
 }

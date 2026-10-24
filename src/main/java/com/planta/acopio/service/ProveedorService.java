@@ -103,8 +103,12 @@ public class ProveedorService {
         Zona nuevaZona = zonaRepository.findById(nuevaZonaId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Zona no encontrada: " + nuevaZonaId));
 
-        LocalDateTime ahora = LocalDateTime.now(reloj);
         Zona zonaAnterior = proveedor.getZonaActual();
+        // Reasignar a la zona en la que ya esta no cambia nada: abriria un periodo identico y ensuciaria el historial.
+        if (zonaAnterior != null && zonaAnterior.getId().equals(nuevaZona.getId())) {
+            throw new ConflictoNegocioException("El proveedor ya está en la zona " + nuevaZona.getNombre());
+        }
+        LocalDateTime ahora = LocalDateTime.now(reloj);
         historialZonaRepository.findByProveedorIdAndFinEnIsNull(proveedorId)
                 .ifPresent(periodoAbierto -> cerrarPeriodo(periodoAbierto, ahora));
         historialZonaRepository.flush(); // el indice unico parcial exige cerrar el abierto antes de insertar el nuevo

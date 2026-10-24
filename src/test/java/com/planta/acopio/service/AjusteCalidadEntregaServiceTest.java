@@ -14,6 +14,7 @@ import com.planta.acopio.repository.AjusteCalidadEntregaRepository;
 import com.planta.acopio.repository.AnalisisCalidadRepository;
 import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
+import com.planta.acopio.repository.RegistroAcopioRepository;
 import com.planta.acopio.repository.UsuarioRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -47,6 +48,7 @@ class AjusteCalidadEntregaServiceTest {
     @Mock private PagoRepository pagoRepository;
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private PrecioAplicado precioAplicado;
+    @Mock private RegistroAcopioRepository registroAcopioRepository;
 
     private AjusteCalidadEntregaService service;
 
@@ -57,7 +59,7 @@ class AjusteCalidadEntregaServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new AjusteCalidadEntregaService(repository, lineaPagoRepository, analisisRepository, pagoRepository, usuarioRepository, precioAplicado);
+        service = new AjusteCalidadEntregaService(repository, lineaPagoRepository, analisisRepository, pagoRepository, usuarioRepository, precioAplicado, registroAcopioRepository);
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("admin@planta.com", null));
 
         Pago pago = new Pago();
@@ -217,5 +219,45 @@ class AjusteCalidadEntregaServiceTest {
         assertThat(lista).hasSize(1);
         assertThat(lista.get(0).registroAcopioId()).isEqualTo(entrega.getId());
         assertThat(lista.get(0).pagoId()).isEqualTo(pagoId);
+    }
+
+
+    // Cierre de la Fase C: CALIDAD ve los precios de calidad de UNA entrega sin acceso a los pagos.
+    @Test
+    void elHistorialPorEntregaListaLosPreciosDeEsaEntrega() {
+        when(registroAcopioRepository.existsById(entrega.getId())).thenReturn(true);
+        AjusteCalidadEntrega a = new AjusteCalidadEntrega();
+        a.setId(UUID.randomUUID());
+        a.setPagoLinea(linea);
+        a.setPrecioAnterior(new BigDecimal("1.000"));
+        a.setPrecioNuevo(new BigDecimal("0.900"));
+        a.setAnalisisCalidad(analisis);
+        a.setMotivo("Agua");
+        Usuario admin = new Usuario();
+        admin.setNombre("Administrador");
+        a.setUsuario(admin);
+        when(repository.findByPagoLineaRegistroAcopioIdOrderByCreadoEnDescIdDesc(entrega.getId())).thenReturn(List.of(a));
+
+        var lista = service.listarPorRegistro(entrega.getId());
+
+        assertThat(lista).hasSize(1);
+        assertThat(lista.get(0).registroAcopioId()).isEqualTo(entrega.getId());
+        assertThat(lista.get(0).precioLitroNuevo()).isEqualByComparingTo("0.900");
+    }
+
+    @Test
+    void elHistorialPorEntregaDeUnRegistroInexistenteDa404() {
+        when(registroAcopioRepository.existsById(entrega.getId())).thenReturn(false);
+
+        assertThatThrownBy(() -> service.listarPorRegistro(entrega.getId())).isInstanceOf(RecursoNoEncontradoException.class);
+        verifyNoInteractions(repository);
+    }
+
+    @Test
+    void sinPreciosDeCalidadElHistorialPorEntregaEstaVacio() {
+        when(registroAcopioRepository.existsById(entrega.getId())).thenReturn(true);
+        when(repository.findByPagoLineaRegistroAcopioIdOrderByCreadoEnDescIdDesc(entrega.getId())).thenReturn(List.of());
+
+        assertThat(service.listarPorRegistro(entrega.getId())).isEmpty();
     }
 }
