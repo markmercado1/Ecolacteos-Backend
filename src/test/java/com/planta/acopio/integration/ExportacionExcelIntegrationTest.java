@@ -306,6 +306,8 @@ class ExportacionExcelIntegrationTest {
         r.setUnidad(unidad);
         r.setFechaHora(fechaHora);
         r.setLitros(new BigDecimal(litros));
+        // Fase E: la zona de una entrega es la que tenia el proveedor cuando entrego (se guarda al registrarla); los reportes por zona la usan.
+        r.setZona(proveedor.getZonaActual());
         registroAcopioRepository.save(r);
     }
 }

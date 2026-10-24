@@ -40,8 +40,7 @@ public interface AnalisisCalidadRepository extends JpaRepository<AnalisisCalidad
     @Query(value = "SELECT date_trunc('week', a.creado_en)::date AS semana, " +
            "100.0 * SUM(CASE WHEN a.resultado = 'RECHAZADO' THEN 1 ELSE 0 END) / COUNT(*) AS pct_rechazo " +
            "FROM analisis_calidad a JOIN registro_acopio r ON a.registro_acopio_id = r.id " +
-           "JOIN proveedor p ON r.proveedor_id = p.id " +
-           "WHERE p.zona_actual_id = :zonaId GROUP BY semana ORDER BY semana", nativeQuery = true)
+           "WHERE r.zona_id = :zonaId GROUP BY semana ORDER BY semana", nativeQuery = true)
     List<Object[]> pctRechazoPorSemanaZona(@Param("zonaId") UUID zonaId);
 
     // Ultimo agua_anadida=true reciente del proveedor -- usado por AnomaliaService

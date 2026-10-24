@@ -81,8 +81,8 @@ public class RegistroAcopioController {
     @Operation(
             summary = "Buscar registros de acopio con filtros",
             description = "Rol requerido: ACOPIADOR, ADMIN, CALIDAD o PRODUCCION. Todos los filtros son "
-                    + "opcionales y combinables: `fecha` (día calendario completo), `zonaId` (vía "
-                    + "proveedor.zonaActual), `sinAnalisis=true` (registros que todavía no tienen ningún "
+                    + "opcionales y combinables: `fecha` (día calendario completo), `zonaId` (la zona de cada "
+                    + "entrega, no la actual del proveedor; una entrega sin zona determinada no aparece en ninguna zona), `sinAnalisis=true` (registros que todavía no tienen ningún "
                     + "AnalisisCalidad asociado). Sin filtros devuelve todos los registros. Orden descendente "
                     + "por fecha. Cada registro incluye `disponibleParaLote`: `false` si ya pertenece a un "
                     + "LoteProduccion (v1: un registro pertenece a un único lote) -- útil para que PRODUCCION "
