@@ -21,4 +21,8 @@ public interface AjusteCalidadEntregaRepository extends JpaRepository<AjusteCali
 
     // Historial de un pago: del mas reciente al mas antiguo.
     List<AjusteCalidadEntrega> findByPagoLineaPagoIdOrderByCreadoEnDescIdDesc(UUID pagoId);
+
+    // Fase D: en cuantas entregas de un proveedor se fijo un precio de calidad propio.
+    @org.springframework.data.jpa.repository.Query("SELECT COUNT(DISTINCT a.pagoLinea.id) FROM AjusteCalidadEntrega a WHERE a.pagoLinea.pago.proveedor.id = :proveedorId")
+    long contarEntregasConPrecioPropio(@org.springframework.data.repository.query.Param("proveedorId") UUID proveedorId);
 }

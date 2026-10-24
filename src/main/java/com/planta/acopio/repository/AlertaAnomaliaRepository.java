@@ -23,4 +23,9 @@ public interface AlertaAnomaliaRepository extends JpaRepository<AlertaAnomalia, 
     @Query("SELECT COALESCE(SUM(a.registroAcopio.litros), 0) FROM AlertaAnomalia a " +
            "WHERE a.registroAcopio.proveedor.zonaActual.id = :zonaId AND a.creadoEn >= :desde")
     java.math.BigDecimal sumarLitrosEnAlertaPorZonaDesde(@Param("zonaId") UUID zonaId, @Param("desde") LocalDateTime desde);
+
+    // Fase D: alertas de anomalia de un proveedor (todas) y de las entregas de una pagina.
+    long countByRegistroAcopioProveedorId(UUID proveedorId);
+
+    List<AlertaAnomalia> findByRegistroAcopioIdIn(java.util.Collection<UUID> registroAcopioIds);
 }

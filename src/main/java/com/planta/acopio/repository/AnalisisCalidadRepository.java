@@ -49,4 +49,10 @@ public interface AnalisisCalidadRepository extends JpaRepository<AnalisisCalidad
     @Query("SELECT COUNT(a) > 0 FROM AnalisisCalidad a WHERE a.registroAcopio.proveedor.id = :proveedorId " +
            "AND a.aguaAnadida = true AND a.creadoEn >= :desde")
     boolean existeAguaAnadidaRecienteParaProveedor(@Param("proveedorId") UUID proveedorId, @Param("desde") LocalDateTime desde);
+
+    // Fase D: todos los analisis de las entregas de un proveedor (cronologico: el ultimo de cada entrega pisa a los anteriores), y los de
+    // las entregas de una pagina.
+    List<AnalisisCalidad> findByRegistroAcopioProveedorIdOrderByCreadoEnAscIdAsc(UUID proveedorId);
+
+    List<AnalisisCalidad> findByRegistroAcopioIdInOrderByCreadoEnAscIdAsc(java.util.Collection<UUID> registroAcopioIds);
 }
