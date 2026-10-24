@@ -369,6 +369,21 @@ la **liquidación** (la deuda); los pagos efectivos son el **dinero realmente en
 - Un historial muy largo se pagina en el servidor; el resumen recorre las entregas del proveedor (unos cientos al año).
 - Sin cambios en los contratos de la app móvil.
 
+## 14. Reportes por zona histórica (Fase E)
+
+**Cambio de criterio, sin migración y sin cambios de contrato** (mismos campos y rutas). Todo reporte «por zona» pasa de agrupar por la **zona actual del proveedor** a agrupar por la **zona de cada
+entrega** (`registro_acopio.zona_id`, la que tenía el proveedor cuando entregó, guardada desde la Fase A). Efectos, medidos sobre una copia de la base de desarrollo (ver `docs/fase-e-comparacion.md`
+del panel):
+
+- Un proveedor que cambió de zona **deja de arrastrar su historia** a la zona nueva (en esos datos, variación neta de entregas por zona: Zona Prueba −192, Chugur +105, Sorochuco +81, Bambamarca +3, y 3 que ya no cuentan en ninguna zona).
+- Una entrega **sin zona determinada** (`zona_id` nulo; los casos de la pantalla de revisión) **no aparece en ninguna zona**. No se rellena con la zona actual y no se repara: sin filtro de zona sigue
+  apareciendo.
+- Sin filtro de zona la respuesta es **exactamente la misma** (3 276 entregas en la copia de prueba antes y después).
+- Consultas que cambian: `GET /api/registros-acopio?zonaId=` y `/paginado?zonaId=` (y la exportación a Excel de acopios), `GET /api/registros-acopio/resumen-por-proveedor?zonaId=`,
+  `GET /api/innovacion/alertas?zonaId=`, los litros en alerta y el % de rechazo por semana del panel económico, y las bases del forecasting por zona (litros por rango, promedio histórico,
+  promedio por mes y suma semanal).
+- **No cambian:** el score de confianza por zona (es del proveedor, no de una entrega), el filtro de proveedores por zona (estado actual) y los endpoints de zonas, rutas y comunicados.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*

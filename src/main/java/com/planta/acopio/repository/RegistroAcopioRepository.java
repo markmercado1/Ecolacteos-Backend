@@ -72,8 +72,9 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
 
     // Bloque 2 (confirmado): bandeja operativa para CALIDAD/ADMIN -- filtros
     // combinables, todos opcionales (parametro null = sin filtrar por ese
-    // campo). zonaId filtra via proveedor.zonaActual (registro_acopio no
-    // tiene zona propia, igual que el resto del sistema). sinAnalisis usa
+    // campo). Fase E: zonaId filtra por la zona de CADA ENTREGA (registro_acopio.zona_id, la que tenia el
+    // proveedor cuando entrego), no por su zona actual; una entrega sin zona determinada (zona_id nulo) no aparece en
+    // ninguna zona (ver /api/admin/zonas/revision). sinAnalisis usa
     // NOT EXISTS contra analisis_calidad -- registros que todavia no tienen
     // ninguna muestra de laboratorio asociada.
     //
@@ -87,7 +88,7 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
     @Query(value = "SELECT r.* FROM registro_acopio r JOIN proveedor p ON r.proveedor_id = p.id WHERE " +
            "(CAST(:fechaInicio AS timestamp) IS NULL OR r.fecha_hora >= CAST(:fechaInicio AS timestamp)) AND " +
            "(CAST(:fechaFin AS timestamp) IS NULL OR r.fecha_hora < CAST(:fechaFin AS timestamp)) AND " +
-           "(CAST(:zonaId AS uuid) IS NULL OR p.zona_actual_id = CAST(:zonaId AS uuid)) AND " +
+           "(CAST(:zonaId AS uuid) IS NULL OR r.zona_id = CAST(:zonaId AS uuid)) AND " +
            "(:sinAnalisis = false OR NOT EXISTS (SELECT 1 FROM analisis_calidad a WHERE a.registro_acopio_id = r.id)) " +
            "ORDER BY r.fecha_hora DESC", nativeQuery = true)
     List<RegistroAcopio> buscarConFiltros(@Param("fechaInicio") LocalDateTime fechaInicio,
@@ -96,28 +97,25 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
                                            @Param("sinAnalisis") boolean sinAnalisis);
 
     // Base del forecasting por zona (ForecastingService). Inferencia documentada
-    // en CORE_DESIGN.md: se agrupa por proveedor.zonaActual, que es la relacion
-    // explicita proveedor<->zona del modelo (no existe zona en registro_acopio
-    // directamente).
-    @Query("SELECT r.litros FROM RegistroAcopio r WHERE r.proveedor.zonaActual.id = :zonaId AND r.fechaHora BETWEEN :inicio AND :fin")
+    // en CORE_DESIGN.md. Fase E: se agrupa por la zona de cada entrega (registro_acopio.zona_id, guardada al
+    // registrarla), asi un proveedor que cambio de zona no arrastra su historia a la zona nueva.
+    @Query("SELECT r.litros FROM RegistroAcopio r WHERE r.zona.id = :zonaId AND r.fechaHora BETWEEN :inicio AND :fin")
     List<BigDecimal> findLitrosPorZonaYRango(@Param("zonaId") UUID zonaId, @Param("inicio") LocalDateTime inicio, @Param("fin") LocalDateTime fin);
 
     // Promedio historico de litros de esa zona en un mes calendario especifico
     // (1-12), vs. el promedio general de la zona -- factor estacional (RF-INN-04).
     @Query(value = "SELECT COALESCE(AVG(r.litros), 0) FROM registro_acopio r " +
-           "JOIN proveedor p ON r.proveedor_id = p.id " +
-           "WHERE p.zona_actual_id = :zonaId AND EXTRACT(MONTH FROM r.fecha_hora) = :mes", nativeQuery = true)
+           "WHERE r.zona_id = :zonaId AND EXTRACT(MONTH FROM r.fecha_hora) = :mes", nativeQuery = true)
     BigDecimal promedioLitrosPorZonaYMes(@Param("zonaId") UUID zonaId, @Param("mes") int mes);
 
     @Query(value = "SELECT COALESCE(AVG(r.litros), 0) FROM registro_acopio r " +
-           "JOIN proveedor p ON r.proveedor_id = p.id WHERE p.zona_actual_id = :zonaId", nativeQuery = true)
+           "WHERE r.zona_id = :zonaId", nativeQuery = true)
     BigDecimal promedioHistoricoGeneralPorZona(@Param("zonaId") UUID zonaId);
 
     // Suma real de litros de la zona en una semana, para completar
     // prediccion_zona.litros_reales al cierre de semana (RF-INN-04).
     @Query(value = "SELECT COALESCE(SUM(r.litros), 0) FROM registro_acopio r " +
-           "JOIN proveedor p ON r.proveedor_id = p.id " +
-           "WHERE p.zona_actual_id = :zonaId AND r.fecha_hora >= :inicio AND r.fecha_hora < :fin", nativeQuery = true)
+           "WHERE r.zona_id = :zonaId AND r.fecha_hora >= :inicio AND r.fecha_hora < :fin", nativeQuery = true)
     BigDecimal sumLitrosPorZonaYSemana(@Param("zonaId") UUID zonaId, @Param("inicio") LocalDateTime inicio, @Param("fin") LocalDateTime fin);
 
     // ---------------------------------------------------------------------
@@ -134,7 +132,7 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
     String FILTROS_REGISTRO =
             "(CAST(:fechaInicio AS timestamp) IS NULL OR r.fecha_hora >= CAST(:fechaInicio AS timestamp)) AND " +
             "(CAST(:fechaFin AS timestamp) IS NULL OR r.fecha_hora < CAST(:fechaFin AS timestamp)) AND " +
-            "(CAST(:zonaId AS uuid) IS NULL OR p.zona_actual_id = CAST(:zonaId AS uuid)) AND " +
+            "(CAST(:zonaId AS uuid) IS NULL OR r.zona_id = CAST(:zonaId AS uuid)) AND " +
             "(:sinAnalisis = false OR NOT EXISTS (SELECT 1 FROM analisis_calidad a WHERE a.registro_acopio_id = r.id)) AND " +
             "(" + BusquedaTexto.SIN_TERMINO + " OR " +
             BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
