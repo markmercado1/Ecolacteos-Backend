@@ -1,8 +1,10 @@
 package com.planta.acopio.controller;
 
 import com.planta.acopio.dto.AnalisisBandejaResponse;
+import com.planta.acopio.dto.AjusteCalidadEntregaResponse;
 import com.planta.acopio.dto.AnalisisCalidadRequest;
 import com.planta.acopio.dto.AnalisisCalidadResponse;
+import com.planta.acopio.service.AjusteCalidadEntregaService;
 import com.planta.acopio.service.AnalisisCalidadService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.Parameter;
@@ -29,9 +31,11 @@ import java.util.UUID;
 public class AnalisisCalidadController {
 
     private final AnalisisCalidadService service;
+    private final AjusteCalidadEntregaService ajusteCalidadEntregaService;
 
-    public AnalisisCalidadController(AnalisisCalidadService service) {
+    public AnalisisCalidadController(AnalisisCalidadService service, AjusteCalidadEntregaService ajusteCalidadEntregaService) {
         this.service = service;
+        this.ajusteCalidadEntregaService = ajusteCalidadEntregaService;
     }
 
     @Operation(
@@ -72,5 +76,20 @@ public class AnalisisCalidadController {
     @GetMapping("/registro/{registroAcopioId}")
     public ResponseEntity<List<AnalisisCalidadResponse>> porRegistro(@Parameter(description = "Id del registro de acopio") @PathVariable UUID registroAcopioId) {
         return ResponseEntity.ok(service.buscarPorRegistro(registroAcopioId));
+    }
+
+    // Fase C (cierre): CALIDAD no tiene acceso a los pagos, pero si debe ver a que precio se pago una entrega cuyo analisis sustento un
+    // precio de calidad. Solo lectura, por entrega; sin datos del proveedor.
+    @Operation(summary = "Precios de calidad aplicados a una entrega", description = "Rol requerido: CALIDAD o ADMIN. Historial (más reciente primero) de los "
+            + "precios de calidad fijados para esta entrega al liquidarla: análisis que lo sustentó, precios anterior y nuevo, motivo y usuario. Vacío si la "
+            + "entrega no tiene ninguno. No da acceso a los pagos ni expone datos personales.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Precios de calidad de la entrega", content = @Content(array = @ArraySchema(schema = @Schema(implementation = AjusteCalidadEntregaResponse.class)))),
+            @ApiResponse(responseCode = "404", description = "No existe un registro de acopio con ese id")
+    })
+    @GetMapping("/registro/{registroAcopioId}/precios-calidad")
+    public ResponseEntity<List<AjusteCalidadEntregaResponse>> preciosDeCalidadDeUnaEntrega(
+            @Parameter(description = "Id del registro de acopio") @PathVariable UUID registroAcopioId) {
+        return ResponseEntity.ok(ajusteCalidadEntregaService.listarPorRegistro(registroAcopioId));
     }
 }

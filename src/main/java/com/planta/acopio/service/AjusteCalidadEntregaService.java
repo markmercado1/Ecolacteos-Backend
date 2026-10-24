@@ -12,6 +12,7 @@ import com.planta.acopio.repository.AjusteCalidadEntregaRepository;
 import com.planta.acopio.repository.AnalisisCalidadRepository;
 import com.planta.acopio.repository.LineaPagoRepository;
 import com.planta.acopio.repository.PagoRepository;
+import com.planta.acopio.repository.RegistroAcopioRepository;
 import com.planta.acopio.repository.UsuarioRepository;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -34,16 +35,19 @@ public class AjusteCalidadEntregaService {
     private final PagoRepository pagoRepository;
     private final UsuarioRepository usuarioRepository;
     private final PrecioAplicado precioAplicado;
+    private final RegistroAcopioRepository registroAcopioRepository;
 
     public AjusteCalidadEntregaService(AjusteCalidadEntregaRepository repository, LineaPagoRepository lineaPagoRepository,
                                        AnalisisCalidadRepository analisisRepository, PagoRepository pagoRepository,
-                                       UsuarioRepository usuarioRepository, PrecioAplicado precioAplicado) {
+                                       UsuarioRepository usuarioRepository, PrecioAplicado precioAplicado,
+                                       RegistroAcopioRepository registroAcopioRepository) {
         this.repository = repository;
         this.lineaPagoRepository = lineaPagoRepository;
         this.analisisRepository = analisisRepository;
         this.pagoRepository = pagoRepository;
         this.usuarioRepository = usuarioRepository;
         this.precioAplicado = precioAplicado;
+        this.registroAcopioRepository = registroAcopioRepository;
     }
 
     @Transactional
@@ -95,6 +99,15 @@ public class AjusteCalidadEntregaService {
             throw new RecursoNoEncontradoException("Pago no encontrado: " + pagoId);
         }
         return repository.findByPagoLineaPagoIdOrderByCreadoEnDescIdDesc(pagoId).stream().map(this::toResponse).toList();
+    }
+
+    // Historial de precios de calidad de UNA entrega, para CALIDAD (que no tiene acceso a los pagos): sin datos del proveedor.
+    @Transactional(readOnly = true)
+    public List<AjusteCalidadEntregaResponse> listarPorRegistro(UUID registroAcopioId) {
+        if (!registroAcopioRepository.existsById(registroAcopioId)) {
+            throw new RecursoNoEncontradoException("Registro de acopio no encontrado: " + registroAcopioId);
+        }
+        return repository.findByPagoLineaRegistroAcopioIdOrderByCreadoEnDescIdDesc(registroAcopioId).stream().map(this::toResponse).toList();
     }
 
     private Usuario usuarioActual() {

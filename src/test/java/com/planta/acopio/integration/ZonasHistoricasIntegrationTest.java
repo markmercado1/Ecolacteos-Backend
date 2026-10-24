@@ -351,4 +351,21 @@ class ZonasHistoricasIntegrationTest {
     private UUID zonaDeEntrega(UUID registroId) {
         return jdbc.queryForObject("SELECT zona_id FROM registro_acopio WHERE id = ?", UUID.class, registroId);
     }
+
+
+    // Criterio de aceptacion de la Fase A: reasignar a la zona en la que ya esta se rechaza y no ensucia el historial.
+    @Test
+    void reasignarALaMismaZonaSeRechazaConConflictoYNoAbreOtroPeriodo() throws Exception {
+        String admin = token("admin@planta.com", "Admin1234");
+        Zona a = zona("Unica");
+        UUID proveedorId = proveedorEn(a);
+
+        mvc.perform(put("/api/proveedores/" + proveedorId + "/zona").param("zonaId", a.getId().toString()).header("Authorization", admin))
+                .andExpect(status().isConflict());
+
+        JsonNode periodos = historial(admin, proveedorId);
+        assertThat(periodos).hasSize(1); // solo el alta
+        verificarCadenaContinua(periodos);
+        assertThat(jdbc.queryForObject("SELECT zona_actual_id FROM proveedor WHERE id = ?", UUID.class, proveedorId)).isEqualTo(a.getId());
+    }
 }

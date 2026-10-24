@@ -252,7 +252,7 @@ Migración `V27__zonas_historicas.sql` (solo aditiva). La zona de una **entrega*
   y `usuario_id`. `desde`/`hasta` se conservan (`hasta` = último día completo, nunca anterior a `desde`). Un índice único parcial garantiza **un solo
   periodo abierto por proveedor**; `PUT /api/proveedores/{id}/zona` bloquea la fila del proveedor, así que dos cambios simultáneos se aplican uno tras otro.
 - **`PUT /api/proveedores/{id}/zona?zonaId=…&motivo=…`** (ADMIN): `motivo` es opcional (hasta 200 caracteres; más → 400). Antes, reasignar el mismo día que se
-  abrió el periodo lo dejaba con `hasta < desde`.
+  abrió el periodo lo dejaba con `hasta < desde`. Reasignar a la zona en la que el proveedor **ya está** se rechaza con **409** (no abre un periodo idéntico).
 - **`GET /api/proveedores/{id}/historial-zona`** (ADMIN): además de los campos de siempre trae `inicioEn`, `finEn`, `zonaOrigenNombre`, `motivo`,
   `usuarioNombre`, `requiereRevision` y `notaRevision` (campos aditivos).
 - **`registro_acopio.zona_id`.** Se asigna al registrar la entrega según su `fechaHora` (también si se sincroniza tarde, después de un cambio de zona). Si ningún
@@ -316,6 +316,9 @@ normal por razones de calidad (p. ej. 100 L de calidad deficiente a 0,90 dentro 
 - **`GET /api/pagos/{id}/lineas`** añade por entrega `precioPropioDeCalidad`, `analisisCalidadId` y `motivoAjusteCalidad`; `precioAplicado` es ahora el de esa entrega.
 - **Ajustes de litros de una entrega** (Fase B): se crean y se valoran al **precio de esa entrega** (su precio de calidad o, si no tiene, el del pago): mientras están PENDIENTES siguen
   los cambios de ese precio y al liquidarlos se congelan.
+- **`GET /api/analisis-calidad/registro/{registroAcopioId}/precios-calidad`** (**CALIDAD** y ADMIN; cierre de la Fase C): historial de precios de calidad de UNA entrega (más reciente primero),
+  con el mismo contrato que `/ajustes-calidad`. Es el acceso de CALIDAD al historial desde su zona (los análisis): **no** da acceso a los pagos ni a sus líneas y no incluye datos del proveedor.
+  Lista vacía si la entrega no tiene precios de calidad; 404 si el registro no existe; 403 para los demás roles.
 - **Trazabilidad:** entrega → análisis → precio normal → precio aplicado → efecto en el total → liquidación (los pagos efectivos son una fase aparte).
 - Sin cambios en los contratos de la app móvil (los campos nuevos de `PagoResponse` van al final y la app ignora los desconocidos).
 

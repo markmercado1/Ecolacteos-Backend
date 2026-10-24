@@ -452,4 +452,52 @@ class CalidadPorEntregaIntegrationTest {
         }
         throw new AssertionError("No hay linea para el registro " + registroId);
     }
+
+
+    // ------------------------------------------------------------------ cierre: CALIDAD ve los precios de su entrega
+
+    @Test
+    void calidadConsultaLosPreciosDeCalidadDeUnaEntregaSinAccesoGeneralAPagos() throws Exception {
+        String admin = token("admin@planta.com", "Admin1234");
+        String calidad = tokenDeRol("CALIDAD");
+        UUID proveedorId = proveedor();
+        List<UUID> entregas = seisEntregasDe100Litros(proveedorId);
+        UUID entrega = entregas.get(0);
+        UUID analisisId = analisis(entrega, "Q-" + sufijo);
+        UUID pagoId = UUID.fromString(generarPago(admin, proveedorId).get("id").asText());
+        String url = "/api/analisis-calidad/registro/" + entrega + "/precios-calidad";
+
+        // sin precios de calidad: lista vacia (no es un error)
+        assertThat(json.readTree(mvc.perform(get(url).header("Authorization", calidad)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString())).isEmpty();
+
+        aplicarCalidad(admin, pagoId, entrega, "0.900", analisisId, "Agua en la leche", 201);
+        aplicarCalidad(admin, pagoId, entrega, "0.850", analisisId, "Segundo analisis", 201);
+
+        String cuerpo = mvc.perform(get(url).header("Authorization", calidad)).andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        JsonNode historial = json.readTree(cuerpo);
+        assertThat(historial).hasSize(2);
+        assertThat(historial.get(0).get("precioLitroNuevo").decimalValue()).isEqualByComparingTo("0.850"); // mas reciente primero
+        assertThat(historial.get(1).get("precioLitroNuevo").decimalValue()).isEqualByComparingTo("0.900");
+        assertThat(historial.get(0).get("analisisFolio").asText()).isEqualTo("Q-" + sufijo);
+        assertThat(historial.get(0).get("motivo").asText()).isEqualTo("Segundo analisis");
+        assertThat(cuerpo).doesNotContain("dni").doesNotContain("telefono").doesNotContain("Proveedor Calidad"); // nada del proveedor
+
+        // otra entrega del mismo pago: vacia
+        assertThat(json.readTree(mvc.perform(get("/api/analisis-calidad/registro/" + entregas.get(1) + "/precios-calidad")
+                .header("Authorization", calidad)).andReturn().getResponse().getContentAsString())).isEmpty();
+
+        // CALIDAD sigue sin acceso general a los pagos
+        mvc.perform(get("/api/pagos/" + pagoId).header("Authorization", calidad)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/pagos/" + pagoId + "/lineas").header("Authorization", calidad)).andExpect(status().isForbidden());
+        mvc.perform(get("/api/pagos").header("Authorization", calidad)).andExpect(status().isForbidden());
+
+        // permisos del nuevo endpoint: CALIDAD y ADMIN; los demas no; registro inexistente 404
+        mvc.perform(get(url).header("Authorization", admin)).andExpect(status().isOk());
+        for (String rol : List.of("RECEPCION", "VENTAS", "PRODUCCION")) {
+            mvc.perform(get(url).header("Authorization", tokenDeRol(rol))).andExpect(status().isForbidden());
+        }
+        mvc.perform(get("/api/analisis-calidad/registro/" + UUID.randomUUID() + "/precios-calidad").header("Authorization", calidad))
+                .andExpect(status().isNotFound());
+    }
 }
