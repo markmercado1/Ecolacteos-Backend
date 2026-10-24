@@ -264,6 +264,12 @@ public class PagoService {
         return totales;
     }
 
+    // Pagos efectivos: total a pagar (total reconocido, con precios de calidad) de varios pagos con las mismas consultas de los listados.
+    @Transactional(readOnly = true)
+    public Map<UUID, BigDecimal> totalesAPagar(Collection<Pago> pagos) {
+        return totalesReconocidos(pagos, preciosEfectivos(pagos));
+    }
+
     private PagoResponse toResponse(Pago p) {
         BigDecimal efectivo = precioEfectivo(p);
         Map<UUID, BigDecimal> precios = new HashMap<>();

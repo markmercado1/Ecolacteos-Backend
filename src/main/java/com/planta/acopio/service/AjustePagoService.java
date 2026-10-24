@@ -105,6 +105,19 @@ public class AjustePagoService {
         return responder(ajustes);
     }
 
+    // Pagos efectivos: suma de los montos (± y vigentes) de los ajustes de litros de cada liquidacion, para su saldo.
+    @Transactional(readOnly = true)
+    public Map<UUID, BigDecimal> montosPorPago(Collection<UUID> pagoIds) {
+        Map<UUID, BigDecimal> montos = new HashMap<>();
+        if (pagoIds.isEmpty()) {
+            return montos;
+        }
+        for (AjustePagoResponse a : responder(repository.findByPagoIdIn(pagoIds))) {
+            montos.merge(a.pagoId(), a.monto(), BigDecimal::add);
+        }
+        return montos;
+    }
+
     // Liquidacion manual (decision confirmada): ADMIN decide cuando y como se
     // salda (efectivo aparte, descontado del proximo pago a su criterio,
     // etc.) -- no hay vinculo automatico a un pago_liquidacion aqui.

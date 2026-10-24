@@ -322,6 +322,33 @@ normal por razones de calidad (p. ej. 100 L de calidad deficiente a 0,90 dentro 
 - **Trazabilidad:** entrega → análisis → precio normal → precio aplicado → efecto en el total → liquidación (los pagos efectivos son una fase aparte).
 - Sin cambios en los contratos de la app móvil (los campos nuevos de `PagoResponse` van al final y la app ignora los desconocidos).
 
+## 12. Pagos efectivos a proveedores (V30)
+
+Migración `V30__pagos_efectivos.sql` (solo aditiva: dos tablas nuevas; no toca `pago`, `pago_linea`, `ajuste_pago`, `ajuste_precio_pago` ni `ajuste_calidad_entrega`). `pago` sigue siendo
+la **liquidación** (la deuda); los pagos efectivos son el **dinero realmente entregado**. Hasta ahora solo existía la marca `comprobante_generado`, que no es dinero pagado.
+
+- **`POST /api/pagos-proveedor`** (**ADMIN y RECEPCION**): `{uuidCliente, proveedorId, modalidad (EFECTIVO|TRANSFERENCIA|DEPOSITO), monto, concepto?, banco?, nroOperacion?, nroRecibo?, observacion?,
+  aplicaciones?: [{pagoId, monto}]}`. Transferencia y depósito **exigen banco y número de operación** (400); banco y operación se indican juntos. No se guardan cuentas completas. Sin
+  `aplicaciones` el pago queda **sin aplicar (adelanto)**. 201 al crearlo; **200 si es un reenvío**.
+- **Idempotencia.** Reenviar el mismo `uuidCliente` con los mismos datos devuelve el pago ya registrado (200); con datos distintos, 409. La misma operación bancaria (banco + número, sin distinguir
+  mayúsculas ni espacios) entre pagos **vigentes**: con los mismos datos (proveedor, modalidad, monto…) es el mismo pago (200); con otros, 409. Un pago **anulado libera su operación**. Si dos
+  solicitudes iguales llegan a la vez, la restricción única de la BD deja pasar una y la otra devuelve el resultado de la primera (nunca dos filas).
+- **`POST /api/pagos-proveedor/{id}/aplicaciones`** (ADMIN y RECEPCION): `{aplicaciones: [{pagoId, monto}]}` (1–50, sin repetir liquidación). Aplica (parte de) lo que queda del pago a liquidaciones del
+  **mismo proveedor** (400 si es de otro; 404 si no existe). **409** si el pago está anulado, si lo solicitado supera lo que le queda al pago o si el monto de una liquidación supera su saldo.
+- **Concurrencia.** Aplicar bloquea (`FOR UPDATE`) el pago y, en orden de id, las liquidaciones involucradas; anular bloquea el pago. Dos aplicaciones simultáneas a la misma liquidación o al mismo pago se
+  ejecutan una tras otra y ninguna pasa del tope (probado con hilos y con bloqueos tomados desde otra transacción). Registrar con aplicaciones es **todo o nada**.
+- **`POST /api/pagos-proveedor/{id}/anular`** (**solo ADMIN**): `{motivo}` obligatorio. **No borra**: cambia el estado a ANULADO y deja motivo, usuario y fecha; sus aplicaciones se conservan pero
+  **dejan de contar** en los saldos. 409 si ya estaba anulado. La BD lo exige: anulado ⇔ con motivo, usuario y fecha.
+- **Lecturas** (ADMIN y RECEPCION): `GET /api/pagos-proveedor` (paginado; filtros `proveedorId`, `estado`=REGISTRADO|ANULADO, `busqueda` por proveedor, DNI, operación o recibo, sin acentos ni
+  mayúsculas; más reciente primero), `GET /api/pagos-proveedor/{id}`. Ninguna respuesta trae **DNI ni teléfono**. Los importes no se editan.
+- **Saldos (derivados, no se guardan; no hay un estado «pagado» duplicado).** `GET /api/pagos-proveedor/saldos?pagoIds=a,b` (hasta 100) y `GET /api/pagos-proveedor/proveedor/{id}/saldo`.
+  Saldo de una liquidación = **total a pagar** (el total reconocido con precios de calidad, Fase C) + **ajustes de litros posteriores** (± , valorados a su precio vigente o congelado, Fase B) −
+  aplicaciones de pagos no anulados. **Negativo = saldo a favor del proveedor** (por ejemplo, una corrección a la baja después de pagar). Estado: PENDIENTE (nada aplicado), PARCIAL, PAGADO (saldo 0),
+  SALDO_A_FAVOR. El saldo del proveedor suma sus liquidaciones y resta los **adelantos sin aplicar** (`saldoNeto`).
+- **Decisión de negocio (usuario):** los ajustes de litros entran dentro del saldo de **su** liquidación; «liquidar ajuste» sigue siendo solo la marca que congela su precio.
+- **Fuera de alcance (pendiente):** constancia de pago (archivo adjunto: `ArchivoController` hoy no permite subir a RECEPCION) y reportes por zona (Fase E).
+- Sin cambios en los contratos de la app móvil.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*

@@ -2,12 +2,15 @@ package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.Pago;
 import com.planta.acopio.service.BusquedaTexto;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -51,4 +54,12 @@ public interface PagoRepository extends JpaRepository<Pago, UUID> {
     // impide en PagoService.generar), por eso Optional es seguro aqui.
     @Query("SELECT p FROM Pago p JOIN p.registrosLiquidados r WHERE r.id = :registroAcopioId")
     Optional<Pago> findByRegistroLiquidadoId(@Param("registroAcopioId") UUID registroAcopioId);
+
+    // Pagos efectivos: aplicar un desembolso bloquea las liquidaciones involucradas (en orden de id, para no abrir ciclos entre
+    // transacciones): dos aplicaciones simultaneas a la misma liquidacion se ejecutan una tras otra y ninguna pasa del saldo.
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("SELECT p FROM Pago p WHERE p.id IN :ids ORDER BY p.id")
+    List<Pago> findByIdInParaActualizar(@Param("ids") Collection<UUID> ids);
+
+    List<Pago> findByProveedorIdOrderBySemanaInicioAscIdAsc(UUID proveedorId);
 }
