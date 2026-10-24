@@ -349,6 +349,26 @@ la **liquidación** (la deuda); los pagos efectivos son el **dinero realmente en
 - **Fuera de alcance (pendiente):** constancia de pago (archivo adjunto: `ArchivoController` hoy no permite subir a RECEPCION) y reportes por zona (Fase E).
 - Sin cambios en los contratos de la app móvil.
 
+## 13. Historial consolidado del proveedor (Fase D)
+
+**Solo lectura y sin migración**: reúne lo que ya existe (entregas con su zona de ese momento —Fase A—, litros efectivos —B—, calidad y precios propios —C—, liquidaciones, pagos y saldos
+—pagos efectivos—, movimientos de zona). No guarda ni duplica datos, y los totales salen de las mismas fuentes que las demás pantallas, así que **cuadran con ellas**.
+
+- **`GET /api/proveedores/{id}/historial/resumen`** (**ADMIN, RECEPCION y CALIDAD**; 404 si el proveedor no existe). Cada rol recibe **solo sus secciones**; una sección no autorizada llega **nula** y
+  `secciones` dice cuáles llegaron: `ENTREGAS` (todos), `CALIDAD` (ADMIN y CALIDAD), `PAGOS` (ADMIN y RECEPCION) y `ZONAS` (solo ADMIN). Sin DNI ni teléfono.
+  - `entregas`: total, litros recibidos (originales, inmutables) y efectivos (con la última corrección justificada), primera y última entrega, corregidas y **sin zona**.
+  - `calidad`: resultado del **último** análisis de cada entrega (analizadas + sin análisis = entregas; aprobadas + observadas + rechazadas = analizadas), alertas de anomalía y entregas con precio de calidad propio.
+  - `pagos`: liquidaciones, litros liquidados, total original, **total reconocido** (suma de los `totalAPagar`), ajuste por precios de calidad, ajustes de litros posteriores, total con ajustes, **pagado**
+    (aplicado de pagos no anulados), saldo de las liquidaciones, adelantos sin aplicar y **saldo neto** (negativo = a favor del proveedor), más las entregas aún **sin liquidar** (no entran en esos totales).
+    Identidades: `totalConAjustes = totalReconocido + ajustesLitros`; `saldoLiquidaciones = totalConAjustes − pagado`; `saldoNeto = saldoLiquidaciones − adelantosSinAplicar`.
+  - `zonas`: los movimientos de zona (los mismos de `GET /api/proveedores/{id}/historial-zona`).
+- **`GET /api/proveedores/{id}/historial/entregas?page&size`** (mismos roles): entregas del proveedor, más reciente primero. Por entrega: litros originales y efectivos, `corregida`, **`zonaNombre` de ese
+  momento** (nula si el sistema no pudo determinarla: no se rellena con la zona actual), `calidad` (solo ADMIN y CALIDAD: último resultado, folio, nº de análisis, alertas, `precioPropio`) y
+  `liquidacion` (solo ADMIN y RECEPCION; nula si la entrega aún no está liquidada: pago, semana, litros liquidados, precio aplicado e `importe` = litros × precio **sin redondear**; la suma de los
+  importes de un pago, redondeada una vez, es su `totalAPagar`).
+- Un historial muy largo se pagina en el servidor; el resumen recorre las entregas del proveedor (unos cientos al año).
+- Sin cambios en los contratos de la app móvil.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*
