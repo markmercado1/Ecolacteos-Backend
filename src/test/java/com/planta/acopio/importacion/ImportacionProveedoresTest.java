@@ -260,7 +260,7 @@ class ImportacionProveedoresTest {
 
         ArgumentCaptor<ProveedorRequest> pedido = ArgumentCaptor.forClass(ProveedorRequest.class);
         verify(servicio).crear(pedido.capture());
-        assertThat(pedido.getValue()).isEqualTo(new ProveedorRequest("Rosa Quispe", "04567890", "+51987654321", norte.getId()));
+        assertThat(pedido.getValue()).isEqualTo(new ProveedorRequest("Rosa Quispe", "04567890", "+51987654321", norte.getId(), "NATURAL", null, null));
         org.mockito.Mockito.verifyNoMoreInteractions(servicio);
     }
 
@@ -294,6 +294,93 @@ class ImportacionProveedoresTest {
         assertThat(tipo.listasDesplegables().get("zona")).containsExactly("Sur Ñuñoa", "Zona Norte");
         assertThat(tipo.listasAbiertas()).isEmpty();
         assertThat(Set.of(tipo.codigo())).containsExactly("proveedores");
-        assertThat(tipo.version()).isEqualTo(1);
+        assertThat(tipo.version()).isEqualTo(2);
+        assertThat(tipo.listasDesplegables().get("tipo")).containsExactly("Persona natural", "Empresa");
+    }
+    // ------------------------------------------------------------------------------- Fase G: tipo, RUC y razon social
+
+    private static FilaCruda filaG(CeldaLeida tipoPersona, CeldaLeida nombre, CeldaLeida dni, CeldaLeida ruc, CeldaLeida razonSocial) {
+        Map<String, CeldaLeida> celdas = new LinkedHashMap<>();
+        celdas.put("tipo", tipoPersona);
+        celdas.put("nombre", nombre);
+        celdas.put("dni", dni);
+        celdas.put("ruc", ruc);
+        celdas.put("razonSocial", razonSocial);
+        celdas.put("telefono", CeldaLeida.VACIA);
+        celdas.put("zona", CeldaLeida.VACIA);
+        return new FilaCruda(2, celdas);
+    }
+
+    @Test
+    void sinTipoEsPersonaNaturalYPuedeTenerSuRucDiezConSuDni() {
+        var r = validar(filaG(CeldaLeida.VACIA, texto("Rosa Quispe"), texto("04567890"), texto("10045678909"), CeldaLeida.VACIA));
+        assertThat(r.estado()).isEqualTo(EstadoFila.VALIDA);
+        assertThat(r.valores()).containsEntry("tipo", "Persona natural").containsEntry("tipoPersona", "NATURAL")
+                .containsEntry("dni", "04567890").containsEntry("ruc", "10045678909").containsEntry("razonSocial", "");
+    }
+
+    @Test
+    void unRucQueNoContieneElDniOConVerificadorIncorrectoInvalidaLaFila() {
+        var otroDni = validar(filaG(texto("Persona natural"), texto("Rosa"), texto("11111111"), texto("10045678909"), CeldaLeida.VACIA));
+        assertThat(otroDni.estado()).isEqualTo(EstadoFila.INVALIDA);
+        assertThat(otroDni.mensajes()).anyMatch(m -> m.contains("no corresponde al DNI 11111111"));
+
+        var verificador = validar(filaG(CeldaLeida.VACIA, texto("Rosa"), texto("04567890"), texto("10045678900"), CeldaLeida.VACIA));
+        assertThat(verificador.mensajes()).anyMatch(m -> m.contains("dígito verificador"));
+
+        var corto = validar(filaG(CeldaLeida.VACIA, texto("Rosa"), texto("04567890"), texto("1004567890"), CeldaLeida.VACIA));
+        assertThat(corto.mensajes()).anyMatch(m -> m.startsWith("RUC:") && m.contains("(tiene 10)"));
+    }
+
+    @Test
+    void unaEmpresaLlevaRucVeinteYRazonSocialSinDniYSuNombrePorDefectoEsLaRazonSocial() {
+        var r = validar(filaG(texto("EMPRESA"), CeldaLeida.VACIA, CeldaLeida.VACIA, numero("20601234565"), texto("Lácteos del Valle S.A.C.")));
+        assertThat(r.estado()).isEqualTo(EstadoFila.VALIDA);
+        assertThat(r.valores()).containsEntry("tipo", "Empresa").containsEntry("tipoPersona", "EMPRESA").containsEntry("dni", "")
+                .containsEntry("ruc", "20601234565").containsEntry("nombre", "Lácteos del Valle S.A.C.");
+        assertThat(tipo.claveUnica(r.valores())).isEqualTo("RUC 20601234565");
+    }
+
+    @Test
+    void unaEmpresaSinRucSinRazonSocialConDniOConRucDiezEsInvalida() {
+        assertThat(validar(filaG(texto("Empresa"), CeldaLeida.VACIA, CeldaLeida.VACIA, CeldaLeida.VACIA, texto("ACME"))).mensajes())
+                .anyMatch(m -> m.contains("RUC es obligatorio"));
+        assertThat(validar(filaG(texto("Empresa"), CeldaLeida.VACIA, CeldaLeida.VACIA, texto("20601234565"), CeldaLeida.VACIA)).mensajes())
+                .anyMatch(m -> m.contains("razón social es obligatoria"));
+        assertThat(validar(filaG(texto("Empresa"), CeldaLeida.VACIA, texto("04567890"), texto("20601234565"), texto("ACME"))).mensajes())
+                .anyMatch(m -> m.contains("no registra DNI"));
+        assertThat(validar(filaG(texto("Empresa"), CeldaLeida.VACIA, CeldaLeida.VACIA, texto("10045678909"), texto("ACME"))).mensajes())
+                .anyMatch(m -> m.contains("empieza con 20"));
+    }
+
+    @Test
+    void unaPersonaNaturalNoLlevaRazonSocialYUnTipoDesconocidoSeRechaza() {
+        assertThat(validar(filaG(CeldaLeida.VACIA, texto("Rosa"), texto("04567890"), CeldaLeida.VACIA, texto("ACME"))).mensajes())
+                .anyMatch(m -> m.contains("solo se registra para una empresa"));
+        assertThat(validar(filaG(texto("Cooperativa"), texto("Rosa"), texto("04567890"), CeldaLeida.VACIA, CeldaLeida.VACIA)).mensajes())
+                .anyMatch(m -> m.startsWith("Tipo de persona:"));
+    }
+
+    @Test
+    void unRucQueYaExisteEsDuplicadoYSeConsultaUnaSolaVez() {
+        when(repositorio.rucsExistentes(any())).thenReturn(List.of("20601234565"));
+        var f = filaG(texto("Empresa"), CeldaLeida.VACIA, CeldaLeida.VACIA, texto("20601234565"), texto("ACME"));
+        var r = tipo.validar(f, tipo.preparar(List.of(f)));
+        assertThat(r.estado()).isEqualTo(EstadoFila.DUPLICADA);
+        assertThat(r.mensajes().get(0)).contains("RUC 20601234565");
+        verify(repositorio, org.mockito.Mockito.times(1)).rucsExistentes(any());
+    }
+
+    @Test
+    void alConfirmarOmiteSiElRucSeRegistroEntreTantoYCreaLaEmpresaPorElServicio() {
+        when(repositorio.findByRuc("20601234565")).thenReturn(Optional.of(new Proveedor()));
+        assertThat(tipo.conflictoAlConfirmar(Map.of("dni", "", "ruc", "20601234565", "zonaId", "")))
+                .hasValueSatisfying(m -> assertThat(m).contains("RUC 20601234565"));
+
+        tipo.crear(Map.of("tipoPersona", "EMPRESA", "nombre", "ACME", "dni", "", "ruc", "20601234565", "razonSocial", "ACME S.A.C.",
+                "telefono", "", "zonaId", ""));
+        ArgumentCaptor<ProveedorRequest> pedido = ArgumentCaptor.forClass(ProveedorRequest.class);
+        verify(servicio).crear(pedido.capture());
+        assertThat(pedido.getValue()).isEqualTo(new ProveedorRequest("ACME", null, null, null, "EMPRESA", "20601234565", "ACME S.A.C."));
     }
 }

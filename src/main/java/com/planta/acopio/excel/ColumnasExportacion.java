@@ -54,7 +54,10 @@ public final class ColumnasExportacion {
 
     public static final List<ColumnaExcel<ProveedorAdminResponse>> PROVEEDORES = List.of(
             texto("Proveedor", 36, ProveedorAdminResponse::nombre),
+            texto("Tipo de persona", 16, p -> "EMPRESA".equals(p.tipoPersona()) ? "Empresa" : "Persona natural"),
             texto("DNI", 14, ProveedorAdminResponse::dni),
+            texto("RUC", 14, ProveedorAdminResponse::ruc),
+            texto("Razón social", 36, ProveedorAdminResponse::razonSocial),
             texto("Teléfono", 18, ProveedorAdminResponse::telefono),
             texto("Zona actual", 22, ProveedorAdminResponse::zonaActualNombre),
             siNo("Activo", ProveedorAdminResponse::activo)

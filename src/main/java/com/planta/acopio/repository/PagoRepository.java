@@ -24,13 +24,15 @@ public interface PagoRepository extends JpaRepository<Pago, UUID> {
     // porque la consume la app movil (GET /api/pagos/proveedor/{id}).
     Page<Pago> findByProveedorIdOrderBySemanaInicioDescIdDesc(UUID proveedorId, Pageable pageable);
 
-    // Listado global con busqueda por nombre o DNI del proveedor (sin acentos ni mayusculas) sobre TODOS los pagos,
+    // Listado global con busqueda por nombre, DNI, RUC o razon social del proveedor (sin acentos ni mayusculas) sobre TODOS los pagos,
     // antes de paginar. Orden: semana mas reciente primero y, dentro de la misma semana, el pago creado mas
     // recientemente primero (creado_en; el id es un UUID aleatorio y solo desempata lo que queda igual).
     String FILTROS_PAGO =
             "FROM pago p JOIN proveedor pr ON p.proveedor_id = pr.id WHERE (" + BusquedaTexto.SIN_TERMINO + " OR " +
             BusquedaTexto.PLEGAR_ABRE + "pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
-            BusquedaTexto.PLEGAR_ABRE + "pr.dni" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
+            BusquedaTexto.PLEGAR_ABRE + "coalesce(pr.dni, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "coalesce(pr.ruc, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "coalesce(pr.razon_social, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + ") ";
 
     @Query(value = "SELECT p.* " + FILTROS_PAGO + "ORDER BY p.semana_inicio DESC, p.creado_en DESC, p.id DESC",
            countQuery = "SELECT count(*) " + FILTROS_PAGO,

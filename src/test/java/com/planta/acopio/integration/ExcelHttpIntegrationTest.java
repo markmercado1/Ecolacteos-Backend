@@ -106,16 +106,17 @@ class ExcelHttpIntegrationTest {
         MvcResult plantilla = mvc.perform(get("/api/admin/importaciones/proveedores/plantilla").header("Authorization", admin))
                 .andExpect(status().isOk()).andReturn();
         assertThat(plantilla.getResponse().getContentType()).isEqualTo(XLSX);
-        assertThat(plantilla.getResponse().getHeader("Content-Disposition")).contains("plantilla-proveedores-v1.xlsx");
+        assertThat(plantilla.getResponse().getHeader("Content-Disposition")).contains("plantilla-proveedores-v2.xlsx");
         assertThat(plantilla.getResponse().getHeader("Cache-Control")).contains("no-store");
         byte[] bytesPlantilla = plantilla.getResponse().getContentAsByteArray();
         assertThat(hoja(bytesPlantilla).getSheetName()).isEqualTo("Instrucciones");
 
         // 2. Vista previa: sube el archivo llenado como multipart.
         byte[] llena = ExcelDePrueba.conFilas(bytesPlantilla, List.of(
-                List.of("Rosa Quispe " + sufijo, dni(1), "987 654 321", ""),
-                List.of("Luis Mamani " + sufijo, dni(2), "", ""),
-                List.of("Sin DNI " + sufijo, "12", "", "")));
+                // Fase G (plantilla v2): tipo, nombre, DNI, RUC, razon social, telefono, zona
+                java.util.Arrays.asList(null, "Rosa Quispe " + sufijo, dni(1), null, null, "987 654 321", ""),
+                java.util.Arrays.asList(null, "Luis Mamani " + sufijo, dni(2), null, null, "", ""),
+                java.util.Arrays.asList(null, "Sin DNI " + sufijo, "12", null, null, "", "")));
         MvcResult vista = mvc.perform(multipart("/api/admin/importaciones/proveedores/previsualizar")
                         .file(new MockMultipartFile("archivo", "padron.xlsx", XLSX, llena)).header("Authorization", admin))
                 .andExpect(status().isOk()).andReturn();
@@ -158,10 +159,10 @@ class ExcelHttpIntegrationTest {
         assertThat(exportado.getResponse().getHeader("Access-Control-Expose-Headers")).contains("Content-Disposition");
         Sheet filas = hoja(exportado.getResponse().getContentAsByteArray());
         assertThat(filas.getLastRowNum()).isEqualTo(2);
-        List<String> dnis = List.of(filas.getRow(1).getCell(1).getStringCellValue(), filas.getRow(2).getCell(1).getStringCellValue());
+        List<String> dnis = List.of(filas.getRow(1).getCell(2).getStringCellValue(), filas.getRow(2).getCell(2).getStringCellValue());
         assertThat(dnis).containsExactlyInAnyOrder(dni(1), dni(2));
         // Solo Rosa tiene telefono; el "+" inicial NO se neutraliza (es un telefono, no una formula).
-        assertThat(List.of(filas.getRow(1).getCell(2).getStringCellValue(), filas.getRow(2).getCell(2).getStringCellValue()))
+        assertThat(List.of(filas.getRow(1).getCell(5).getStringCellValue(), filas.getRow(2).getCell(5).getStringCellValue()))
                 .containsExactlyInAnyOrder("+51987654321", "");
     }
 
@@ -191,7 +192,7 @@ class ExcelHttpIntegrationTest {
         String admin = "Bearer " + tokenDeAdmin();
         byte[] valido = ExcelDePrueba.conFilas(
                 mvc.perform(get("/api/admin/importaciones/proveedores/plantilla").header("Authorization", admin)).andReturn().getResponse().getContentAsByteArray(),
-                List.of(List.of("Rosa " + sufijo, dni(1))));
+                List.of(java.util.Arrays.asList(null, "Rosa " + sufijo, dni(1))));
 
         for (MockMultipartFile hostil : List.of(
                 new MockMultipartFile("archivo", "datos.xlsm", XLSX, valido),
