@@ -16,6 +16,11 @@ import java.util.UUID;
 public interface ProveedorRepository extends JpaRepository<Proveedor, UUID> {
     Optional<Proveedor> findByDni(String dni);
     Optional<Proveedor> findByRuc(String ruc);
+
+    /** Fase H: proveedores cuyo telefono (en cualquier formato) termina en estos 9 digitos nacionales. Solo para sugerir coincidencias. */
+    @Query(value = "SELECT * FROM proveedor WHERE regexp_replace(coalesce(telefono, ''), '[^0-9]', '', 'g') LIKE ('%' || CAST(:nueve AS varchar))",
+           nativeQuery = true)
+    List<Proveedor> conTelefonoTerminadoEn(@Param("nueve") String nueve);
     Optional<Proveedor> findByCodigoQr(String codigoQr);
 
     /** Reasignar zona: serializa los cambios de zona de un mismo proveedor (bloqueo de fila hasta el fin de la transaccion). */

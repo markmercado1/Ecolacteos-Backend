@@ -96,6 +96,21 @@ app:
     # La planta opera en Lima; no asumir la zona del servidor.
     zona-horaria: ${VENCIMIENTO_ZONA_HORARIA:America/Lima}
 
+  # Fase H (datos personales, Ley 29733 y DS 016-2024-JUS art. 6.1): datos del RESPONSABLE que deben figurar en los avisos de la
+  # reserva web y del registro de clientes. Son decisiones del negocio: vacios = el aviso se muestra sin ellos y figura como
+  # incompleto (GET /api/catalogo/privacidad -> completo=false, faltantes). Cambiar `version` cuando cambie el texto.
+  privacidad:
+    version: ${PRIVACIDAD_VERSION:2026-10-24}
+    responsable: ${PRIVACIDAD_RESPONSABLE:}
+    ruc: ${PRIVACIDAD_RUC:}
+    domicilio: ${PRIVACIDAD_DOMICILIO:}
+    contacto: ${PRIVACIDAD_CONTACTO:}
+    banco-datos: ${PRIVACIDAD_BANCO_DATOS:}
+    destinatarios: ${PRIVACIDAD_DESTINATARIOS:}
+    transferencias: ${PRIVACIDAD_TRANSFERENCIAS:}
+    plazo-reservas: ${PRIVACIDAD_PLAZO_RESERVAS:}
+    plazo-clientes: ${PRIVACIDAD_PLAZO_CLIENTES:}
+
   # Fase G (IGV configurable en ventas). Los precios son FINALES (incluyen el IGV): nunca se suma, solo se desglosa. El calculo
   # esta APAGADO por defecto hasta que el contador confirme la afectacion de cada producto, la tasa y el redondeo; mientras
   # tanto la configuracion (tasa con vigencia, afectacion por presentacion) se puede preparar en el panel sin efecto alguno.

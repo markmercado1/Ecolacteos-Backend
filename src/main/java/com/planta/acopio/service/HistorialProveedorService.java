@@ -48,12 +48,18 @@ import java.util.stream.Collectors;
 public class HistorialProveedorService {
 
     /** Que secciones puede ver quien consulta. Las entregas (litros y zona) las ven todos los roles autorizados al historial. */
-    public record Secciones(boolean calidad, boolean pagos, boolean zonas) {
+    // Fase H: COMPRAS = lo que el proveedor compro (solo ADMIN); no toca sus liquidaciones de leche.
+    public record Secciones(boolean calidad, boolean pagos, boolean zonas, boolean compras) {
+        public Secciones(boolean calidad, boolean pagos, boolean zonas) {
+            this(calidad, pagos, zonas, false);
+        }
+
         public List<String> nombres() {
             List<String> n = new ArrayList<>(List.of("ENTREGAS"));
             if (calidad) n.add("CALIDAD");
             if (pagos) n.add("PAGOS");
             if (zonas) n.add("ZONAS");
+            if (compras) n.add("COMPRAS");
             return n;
         }
     }
@@ -69,12 +75,15 @@ public class HistorialProveedorService {
     private final PagoService pagoService;
     private final SaldoPagoService saldoPagoService;
     private final ProveedorService proveedorService;
+    private final HistorialComprasService historialCompras;
 
     public HistorialProveedorService(ProveedorRepository proveedorRepository, RegistroAcopioRepository registroAcopioRepository,
                                      LitrosEfectivos litrosEfectivos, AnalisisCalidadRepository analisisRepository,
                                      AlertaAnomaliaRepository alertaRepository, AjusteCalidadEntregaRepository ajusteCalidadRepository,
                                      LineaPagoRepository lineaPagoRepository, PrecioAplicado precioAplicado, PagoService pagoService,
-                                     SaldoPagoService saldoPagoService, ProveedorService proveedorService) {
+                                     SaldoPagoService saldoPagoService, ProveedorService proveedorService,
+                                     HistorialComprasService historialCompras) {
+        this.historialCompras = historialCompras;
         this.proveedorRepository = proveedorRepository;
         this.registroAcopioRepository = registroAcopioRepository;
         this.litrosEfectivos = litrosEfectivos;
@@ -101,7 +110,8 @@ public class HistorialProveedorService {
         PagosResumen pagos = secciones.pagos() ? resumenPagos(proveedorId, registros, efectivos) : null;
         return new HistorialResumenResponse(
                 proveedor.getId(), proveedor.getNombre(), proveedor.getZonaActual() != null ? proveedor.getZonaActual().getNombre() : null,
-                secciones.nombres(), entregas, calidad, pagos, secciones.zonas() ? proveedorService.historialZona(proveedorId) : null);
+                secciones.nombres(), entregas, calidad, pagos, secciones.zonas() ? proveedorService.historialZona(proveedorId) : null,
+                secciones.compras() ? historialCompras.resumen(com.planta.acopio.entity.TipoComprador.PROVEEDOR, proveedorId) : null);
     }
 
     private EntregasResumen resumenEntregas(List<RegistroAcopio> registros, Map<UUID, LitrosEfectivos.Efectivo> efectivos) {

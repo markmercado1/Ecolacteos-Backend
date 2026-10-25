@@ -74,6 +74,40 @@ public class Reserva {
     @Column(name = "venta_id")
     private UUID ventaId;
 
+    // Fase H (V33): comprador CONFIRMADO por el personal (una reserva nunca crea una ficha por si sola) y version del aviso de
+    // datos personales que vio quien reservo por la web.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "comprador_tipo", length = 10)
+    private TipoComprador compradorTipo;
+
+    @Column(name = "cliente_id")
+    private UUID clienteId;
+
+    @Column(name = "proveedor_id")
+    private UUID proveedorId;
+
+    @Column(name = "comprador_vinculado_por")
+    private UUID compradorVinculadoPor;
+
+    @Column(name = "comprador_vinculado_en")
+    private LocalDateTime compradorVinculadoEn;
+
+    @Column(name = "aviso_privacidad_version", length = 20)
+    private String avisoPrivacidadVersion;
+
+    public TipoComprador getCompradorTipo() { return compradorTipo; }
+    public void setCompradorTipo(TipoComprador compradorTipo) { this.compradorTipo = compradorTipo; }
+    public UUID getClienteId() { return clienteId; }
+    public void setClienteId(UUID clienteId) { this.clienteId = clienteId; }
+    public UUID getProveedorId() { return proveedorId; }
+    public void setProveedorId(UUID proveedorId) { this.proveedorId = proveedorId; }
+    public UUID getCompradorVinculadoPor() { return compradorVinculadoPor; }
+    public void setCompradorVinculadoPor(UUID compradorVinculadoPor) { this.compradorVinculadoPor = compradorVinculadoPor; }
+    public LocalDateTime getCompradorVinculadoEn() { return compradorVinculadoEn; }
+    public void setCompradorVinculadoEn(LocalDateTime compradorVinculadoEn) { this.compradorVinculadoEn = compradorVinculadoEn; }
+    public String getAvisoPrivacidadVersion() { return avisoPrivacidadVersion; }
+    public void setAvisoPrivacidadVersion(String avisoPrivacidadVersion) { this.avisoPrivacidadVersion = avisoPrivacidadVersion; }
+
     public Reserva() {}
 
     /**

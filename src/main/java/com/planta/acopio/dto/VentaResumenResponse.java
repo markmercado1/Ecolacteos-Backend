@@ -15,11 +15,20 @@ public record VentaResumenResponse(
     List<DetalleVentaResponse> detalles,
     BigDecimal total,
     // Fase G: resumen del IGV contenido en el total (ver ResumenIgvVenta).
-    ResumenIgvVenta igv
+    ResumenIgvVenta igv,
+    // Fase H: comprador (null = cliente varios; tipo null + nombre = el nombre dado en la reserva, sin ficha) y reserva de origen.
+    ClienteDtos.CompradorResumen comprador,
+    UUID reservaId,
+    String reservaCodigo
 ) {
 
     public VentaResumenResponse(UUID id, LocalDate fecha, String tipoCliente, List<DetalleVentaResponse> detalles, BigDecimal total) {
-        this(id, fecha, tipoCliente, detalles, total, null);
+        this(id, fecha, tipoCliente, detalles, total, null, null, null, null);
+    }
+
+    public VentaResumenResponse(UUID id, LocalDate fecha, String tipoCliente, List<DetalleVentaResponse> detalles, BigDecimal total,
+                                ResumenIgvVenta igv) {
+        this(id, fecha, tipoCliente, detalles, total, igv, null, null, null);
     }
 
     /**

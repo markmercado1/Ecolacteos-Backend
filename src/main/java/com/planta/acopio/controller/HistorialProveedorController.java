@@ -28,9 +28,11 @@ import java.util.UUID;
 public class HistorialProveedorController {
 
     private final HistorialProveedorService service;
+    private final com.planta.acopio.service.HistorialComprasService compras;
 
-    public HistorialProveedorController(HistorialProveedorService service) {
+    public HistorialProveedorController(HistorialProveedorService service, com.planta.acopio.service.HistorialComprasService compras) {
         this.service = service;
+        this.compras = compras;
     }
 
     @Operation(summary = "Resumen consolidado del proveedor",
@@ -55,9 +57,20 @@ public class HistorialProveedorController {
         return ResponseEntity.ok(PaginaResponse.de(service.entregas(proveedorId, Paginacion.de(page, size), secciones(autenticacion))));
     }
 
+    // Fase H: lo que el proveedor compro (ventas en las que se eligio su ficha como comprador). Solo ADMIN. No toca sus liquidaciones.
+    @Operation(summary = "Compras del proveedor (paginado)", description = "Rol: ADMIN. Ventas en las que el proveedor fue el comprador, con canal, "
+            + "líneas y reserva de origen; más reciente primero.")
+    @GetMapping("/compras")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<PaginaResponse<com.planta.acopio.dto.ClienteDtos.CompraResponse>> compras(
+            @PathVariable UUID proveedorId, @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "20") int size) {
+        service.resumen(proveedorId, new Secciones(false, false, false)); // 404 si el proveedor no existe
+        return ResponseEntity.ok(compras.compras(com.planta.acopio.entity.TipoComprador.PROVEEDOR, proveedorId, Paginacion.de(page, size)));
+    }
+
     static Secciones secciones(Authentication autenticacion) {
         boolean admin = tiene(autenticacion, "ROLE_ADMIN");
-        return new Secciones(admin || tiene(autenticacion, "ROLE_CALIDAD"), admin || tiene(autenticacion, "ROLE_RECEPCION"), admin);
+        return new Secciones(admin || tiene(autenticacion, "ROLE_CALIDAD"), admin || tiene(autenticacion, "ROLE_RECEPCION"), admin, admin);
     }
 
     private static boolean tiene(Authentication autenticacion, String rol) {

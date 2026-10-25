@@ -104,7 +104,9 @@ public final class ColumnasExportacion {
             // Fase G: foto tributaria de la linea; vacio = sin determinar (ventas anteriores o calculo de IGV apagado).
             texto("Afectación IGV", 16, l -> l.detalle().afectacionIgv()),
             decimal("Valor de venta", l -> l.detalle().valorVenta()),
-            decimal("IGV incluido", l -> l.detalle().igv())
+            decimal("IGV incluido", l -> l.detalle().igv()),
+            // Fase H: nombre del comprador usado en la venta (vacio = cliente varios); sin documentos ni telefonos
+            texto("Comprador", 30, l -> l.primera() && l.venta().comprador() != null ? l.venta().comprador().nombre() : null)
     );
 
     /** Aplana ventas en lineas: una fila de Excel por linea vendida. */

@@ -149,7 +149,7 @@ class HistorialConsolidadoIntegrationTest {
     void elResumenDeAdminCuadraConLasLineasYConLasDemasPantallas() throws Exception {
         Escenario e = escenario();
         JsonNode r = resumen(admin, e.proveedorId());
-        assertThat(textos(r.get("secciones"))).containsExactly("ENTREGAS", "CALIDAD", "PAGOS", "ZONAS");
+        assertThat(textos(r.get("secciones"))).containsExactly("ENTREGAS", "CALIDAD", "PAGOS", "ZONAS", "COMPRAS"); // Fase H: COMPRAS solo para ADMIN
         assertThat(r.get("zonaActualNombre").asText()).isEqualTo("Zona Sur " + sufijo);
 
         // entregas: 7 (e0..e6); recibidos 700; efectivos = 700 - 5 (e2) - 10 (e3 corregida despues) = 685

@@ -20,9 +20,15 @@ public record CrearVentaCarritoRequest(
     @NotEmpty @Valid List<@NotNull DetalleVentaRequest> detalles,
     // Fase 4 (opcional, solo web): la venta es el RETIRO de una reserva confirmada. La venta y el paso de la reserva a
     // RETIRADA ocurren en la misma transaccion (si la venta falla, la reserva sigue confirmada). Exige canal PUBLICO.
-    UUID reservaId
+    UUID reservaId,
+    // Fase H (opcional): quien compra (CLIENTE o PROVEEDOR). Sin comprador = cliente varios (solo en canal PUBLICO).
+    @Valid ClienteDtos.CompradorRef comprador
 ) {
     public CrearVentaCarritoRequest(String uuidCliente, LocalDate fecha, String tipoCliente, List<DetalleVentaRequest> detalles) {
-        this(uuidCliente, fecha, tipoCliente, detalles, null);
+        this(uuidCliente, fecha, tipoCliente, detalles, null, null);
+    }
+
+    public CrearVentaCarritoRequest(String uuidCliente, LocalDate fecha, String tipoCliente, List<DetalleVentaRequest> detalles, UUID reservaId) {
+        this(uuidCliente, fecha, tipoCliente, detalles, reservaId, null);
     }
 }
