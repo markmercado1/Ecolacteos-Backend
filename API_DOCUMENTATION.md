@@ -425,6 +425,35 @@ el cliente): el IGV **nunca se suma**; cuando corresponde se **desglosa dentro**
 - **Contrato móvil sin cambios** (`VentaRequest`/`VentaResponse`).
 - **Fuera de alcance:** clientes identificados en ventas, facturación electrónica, detracciones, retenciones y cualquier cambio en pagos a proveedores.
 
+## 17. Clientes, comprador de cada venta e historial de compras (Fase H, V33)
+
+Migración `V33__clientes_compradores.sql` (**aditiva**: no crea fichas a partir de ventas ni reservas; solo enlaza `venta.reserva_id` de los
+retiros que ya existían). Endpoints **exclusivos de la web**; la app móvil no cambia (`POST /api/ventas` y la sincronización siguen aceptando
+ventas sin comprador en cualquier canal).
+
+- **Padrón voluntario** `/api/clientes` (ADMIN y VENTAS; VENTAS recibe teléfonos, DNI, RUC y correo **enmascarados**, `datosCompletos=false`):
+  `GET` (paginado; `busqueda` por nombre, razón social, DNI, RUC o teléfono; `activo`, `mayorista`, `conComunicaciones`), `POST` (registro:
+  `{nombre, telefono, correo?, tipoPersona?, dni?, ruc?, razonSocial?, autorizacionRegistro: {otorgada, forma}, comunicaciones?: {otorgada,
+  medios, forma}, avisoVersion, confirmadoSinCoincidencia}` → 400 sin autorización; 409 si el DNI/RUC es de otra ficha o de un **proveedor**, o si
+  el teléfono ya figura en otras fichas y no se confirmó que es otra persona), `GET /{id}`, `POST /{id}/telefonos`, `POST /{id}/comunicaciones`
+  (`{otorgada, medios?, forma, avisoVersion?, nota?}`: otorgar o **revocar**), `GET /{id}/consentimientos` (evidencia), `GET /{id}/historial`,
+  `GET /{id}/compras`. Solo ADMIN: `PUT /{id}` (datos), `DELETE /{id}/telefonos`, `PUT /{id}/mayorista` (`{mayorista, motivo}`),
+  `PUT /{id}/desactivar|reactivar`, `POST /{id}/fusionar` (`{destinoId, motivo}`; manual; 409 si DNI/RUC distintos), `GET /{id}/fusiones`.
+- **`POST /api/compradores/sugerencias`** (ADMIN y VENTAS): `{telefono?, dni?, ruc?, nombre?}` → fichas de cliente y de proveedor con
+  `coincidencia` DOCUMENTO (misma persona) / TELEFONO / NOMBRE (solo pistas). Datos enmascarados. POST para no dejar datos en la URL.
+- **Ventas** (`POST /api/ventas/carrito`): campo opcional `comprador: {tipo: CLIENTE|PROVEEDOR, id}`. Reglas: PUBLICO opcional; MAYORISTA = cliente
+  habilitado por ADMIN; PROVEEDOR = proveedor del padrón; ficha desactivada → 400. En un retiro (`reservaId` o `POST /api/reservas/{id}/retirar`)
+  el comprador es el confirmado en la reserva. `VentaResumenResponse` agrega `comprador {tipo, id, nombre, ruc}` (copia histórica; `tipo` null +
+  `nombre` = nombre dado en la reserva, sin ficha), `reservaId` y `reservaCodigo`. La búsqueda de ventas incluye el nombre del comprador; la
+  exportación agrega «Comprador».
+- **Reservas**: `PUT /api/reservas/{id}/comprador` (`{tipo, id}`) y `DELETE /api/reservas/{id}/comprador` (VENTAS y ADMIN; solo PENDIENTE o
+  CONFIRMADA; eventos COMPRADOR_VINCULADO/DESVINCULADO). `ReservaResponse` agrega `comprador`. `CrearReservaRequest` (público) admite
+  `avisoPrivacidadVersion` opcional.
+- **Proveedor**: el resumen consolidado agrega la sección `COMPRAS` (solo ADMIN) y `GET /api/proveedores/{id}/historial/compras` (ADMIN). Las
+  liquidaciones de leche no cambian.
+- **`GET /api/catalogo/privacidad`** (público): textos del aviso para la reserva, el registro y las promociones; `completo=false` y `faltantes`
+  mientras no se configuren los datos del responsable (`app.privacidad.*`, variables `PRIVACIDAD_*`). Ver `docs/CLIENTES.md` del panel.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*
