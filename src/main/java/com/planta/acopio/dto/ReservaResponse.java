@@ -31,8 +31,18 @@ public record ReservaResponse(
     boolean sinCobertura,
     UUID ventaId,
     List<Linea> lineas,
-    List<Evento> eventos
+    List<Evento> eventos,
+    // Fase H: comprador confirmado por el personal (null si no se vinculo ninguno).
+    ClienteDtos.CompradorResumen comprador
 ) {
+    public ReservaResponse(UUID id, String codigo, EstadoReserva estado, String nombreCliente, String telefono, String correo, String notaCliente,
+                           LocalDate fechaRetiro, LocalDate fechaMaximaRetiro, LocalDateTime creadoEn, LocalDateTime expiraEn, BigDecimal total,
+                           boolean precioAConfirmar, boolean requiereAceptacion, Aceptacion aceptacion, boolean sinCobertura, UUID ventaId,
+                           List<Linea> lineas, List<Evento> eventos) {
+        this(id, codigo, estado, nombreCliente, telefono, correo, notaCliente, fechaRetiro, fechaMaximaRetiro, creadoEn, expiraEn, total,
+                precioAConfirmar, requiereAceptacion, aceptacion, sinCobertura, ventaId, lineas, eventos, null);
+    }
+
     public record Linea(UUID presentacionId, String producto, String presentacion, String unidadConteo,
                         int cantidad, BigDecimal precioUnitario, BigDecimal subtotal) {}
 

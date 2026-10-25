@@ -44,7 +44,40 @@ public class Venta {
     @JoinColumn(name = "vendedor_id")
     private Usuario vendedor;
 
+    // Fase H (V33): comprador (null = cliente varios), reserva de origen y copia historica del nombre/RUC usados en ESTA venta.
+    @Enumerated(EnumType.STRING)
+    @Column(name = "comprador_tipo", length = 10)
+    private TipoComprador compradorTipo;
+
+    @Column(name = "cliente_id")
+    private UUID clienteId;
+
+    @Column(name = "proveedor_id")
+    private UUID proveedorId;
+
+    @Column(name = "reserva_id")
+    private UUID reservaId;
+
+    @Column(name = "comprador_nombre", length = 150)
+    private String compradorNombre;
+
+    @Column(name = "comprador_ruc", length = 11)
+    private String compradorRuc;
+
     public Venta() {}
+
+    public TipoComprador getCompradorTipo() { return compradorTipo; }
+    public void setCompradorTipo(TipoComprador compradorTipo) { this.compradorTipo = compradorTipo; }
+    public UUID getClienteId() { return clienteId; }
+    public void setClienteId(UUID clienteId) { this.clienteId = clienteId; }
+    public UUID getProveedorId() { return proveedorId; }
+    public void setProveedorId(UUID proveedorId) { this.proveedorId = proveedorId; }
+    public UUID getReservaId() { return reservaId; }
+    public void setReservaId(UUID reservaId) { this.reservaId = reservaId; }
+    public String getCompradorNombre() { return compradorNombre; }
+    public void setCompradorNombre(String compradorNombre) { this.compradorNombre = compradorNombre; }
+    public String getCompradorRuc() { return compradorRuc; }
+    public void setCompradorRuc(String compradorRuc) { this.compradorRuc = compradorRuc; }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }

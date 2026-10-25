@@ -24,8 +24,15 @@ public record CrearReservaRequest(
     @Email @Size(max = 120) String correo,
     @NotNull LocalDate fechaRetiro,
     @Size(max = 300) String nota,
-    @NotEmpty @Size(max = 10, message = "Una reserva admite como máximo 10 líneas") List<@NotNull @Valid Linea> lineas
+    @NotEmpty @Size(max = 10, message = "Una reserva admite como máximo 10 líneas") List<@NotNull @Valid Linea> lineas,
+    // Fase H (opcional): version del aviso de datos personales que se mostro al reservar.
+    @Size(max = 20) String avisoPrivacidadVersion
 ) {
+    public CrearReservaRequest(String uuidCliente, String nombreCliente, String telefono, String correo, LocalDate fechaRetiro, String nota,
+                               List<Linea> lineas) {
+        this(uuidCliente, nombreCliente, telefono, correo, fechaRetiro, nota, lineas, null);
+    }
+
     public record Linea(
         @NotNull UUID presentacionId,
         @NotNull @Min(value = 1, message = "La cantidad debe ser al menos 1") @Max(100000) Integer cantidad

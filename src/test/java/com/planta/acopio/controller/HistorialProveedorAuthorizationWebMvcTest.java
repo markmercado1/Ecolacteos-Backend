@@ -40,6 +40,7 @@ class HistorialProveedorAuthorizationWebMvcTest {
 
     @Autowired private MockMvc mvc;
     @MockBean private HistorialProveedorService service;
+    @MockBean private com.planta.acopio.service.HistorialComprasService historialCompras;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 
@@ -62,7 +63,7 @@ class HistorialProveedorAuthorizationWebMvcTest {
     @WithMockUser(roles = {"ADMIN"})
     void adminVeTodasLasSecciones() throws Exception {
         for (String url : List.of("/api/proveedores/" + proveedorId + "/historial/resumen")) {
-            assertThat(seccionesPedidas(url)).isEqualTo(new Secciones(true, true, true));
+            assertThat(seccionesPedidas(url)).isEqualTo(new Secciones(true, true, true, true)); // Fase H: ADMIN tambien ve COMPRAS
         }
     }
 

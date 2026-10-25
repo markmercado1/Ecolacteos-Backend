@@ -6,7 +6,9 @@ import com.planta.acopio.dto.DetalleVentaResponse;
 import com.planta.acopio.dto.VentaRequest;
 import com.planta.acopio.dto.VentaResponse;
 import com.planta.acopio.dto.VentaResumenResponse;
+import com.planta.acopio.dto.ClienteDtos;
 import com.planta.acopio.entity.AfectacionIgv;
+import com.planta.acopio.entity.TipoComprador;
 import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Reserva;
@@ -69,12 +71,13 @@ public class VentaService {
     private final InventarioService inventarioService;
     private final ReservaService reservaService;
     private final ConfiguracionIgvService igvService;
+    private final CompradorService compradorService;
 
     public VentaService(VentaRepository repository, VentaDetalleRepository detalleRepository,
                          PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
                          EntityManager entityManager, PrecioQuesoService precioQuesoService,
                          InventarioService inventarioService, ReservaService reservaService,
-                         ConfiguracionIgvService igvService) {
+                         ConfiguracionIgvService igvService, CompradorService compradorService) {
         this.repository = repository;
         this.detalleRepository = detalleRepository;
         this.presentacionRepository = presentacionRepository;
@@ -84,21 +87,26 @@ public class VentaService {
         this.inventarioService = inventarioService;
         this.reservaService = reservaService;
         this.igvService = igvService;
+        this.compradorService = compradorService;
     }
 
     // Contrato movil (SyncService.procesarLoteVentas y POST /api/ventas directo): sin cambios de forma. Se
     // traduce a una unica linea del modelo compartido.
+    // Fase H: la app movil no envia comprador; sus ventas siguen siendo anonimas en cualquier canal (las reglas de comprador por
+    // canal son del panel, ver registrarCarritoOIgnorarSiDuplicado), para no romper las ventas que ya captura offline.
     @Transactional
     public VentaResponse registrarOIgnorarSiDuplicado(VentaRequest dto) {
         List<DetalleVentaRequest> detalles = List.of(new DetalleVentaRequest(dto.presentacionId(), dto.cantidad()));
-        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), detalles);
+        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), detalles, null, null, false);
         return toResponse(venta);
     }
 
     // Fase 4: carrito multi-linea, exclusivo de la web.
+    // Fase H: comprador opcional (cliente o proveedor) con las reglas por canal: PUBLICO opcional, MAYORISTA un cliente habilitado,
+    // PROVEEDOR un proveedor del padron. En un retiro (reservaId) el comprador es el de la reserva.
     @Transactional
     public VentaResumenResponse registrarCarritoOIgnorarSiDuplicado(CrearVentaCarritoRequest dto) {
-        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), dto.detalles(), dto.reservaId());
+        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), dto.detalles(), dto.reservaId(), dto.comprador(), true);
         return toResumenResponse(venta);
     }
 
@@ -107,20 +115,18 @@ public class VentaService {
     // cualquier motivo, la reserva sigue CONFIRMADA y no queda nada escrito.
     @Transactional
     public VentaResumenResponse registrarRetiroDeReserva(UUID reservaId, String uuidCliente, LocalDate fecha) {
-        Venta venta = crear(uuidCliente, fecha, TipoClienteVenta.PUBLICO.name(), reservaService.lineasParaRetiro(reservaId), reservaId);
+        Venta venta = crear(uuidCliente, fecha, TipoClienteVenta.PUBLICO.name(), reservaService.lineasParaRetiro(reservaId), reservaId, null, true);
         return toResumenResponse(venta);
     }
 
-    private Venta crear(String uuidCliente, LocalDate fecha, String tipoClienteStr, List<DetalleVentaRequest> detallesSolicitados) {
-        return crear(uuidCliente, fecha, tipoClienteStr, detallesSolicitados, null);
-    }
-
     private Venta crear(String uuidCliente, LocalDate fecha, String tipoClienteStr, List<DetalleVentaRequest> detallesSolicitados,
-                        UUID reservaId) {
+                        UUID reservaId, ClienteDtos.CompradorRef compradorRef, boolean desdePanel) {
         var existente = repository.findByUuidCliente(uuidCliente);
         if (existente.isPresent()) {
             Venta venta = existente.get();
-            if (coincideConSolicitud(venta, fecha, tipoClienteStr, detallesSolicitados)) {
+            if (coincideConSolicitud(venta, fecha, tipoClienteStr, detallesSolicitados)
+                    && java.util.Objects.equals(venta.getReservaId(), reservaId)
+                    && (reservaId != null || mismoComprador(venta, compradorRef))) {
                 return venta;
             }
             // Mismo uuidCliente, contenido distinto: conflicto explicito, la operacion existente NO se
@@ -141,6 +147,21 @@ public class VentaService {
                 throw new ValidacionNegocioException("El retiro de una reserva se vende en el canal PUBLICO.");
             }
             reserva = reservaService.iniciarRetiro(reservaId, detallesSolicitados);
+        }
+
+        // Fase H: quien compra. En un retiro, el comprador CONFIRMADO en la reserva (si lo hay): no se vuelven a pedir datos ni se crea
+        // ninguna ficha; si la reserva no tiene comprador vinculado, la venta guarda solo el nombre que dio al reservar. Fuera de un
+        // retiro, el comprador elegido en el panel, validado para el canal.
+        CompradorService.Comprador comprador;
+        if (reserva != null) {
+            comprador = reserva.getCompradorTipo() == null ? null : compradorService.resolver(new ClienteDtos.CompradorRef(
+                    reserva.getCompradorTipo().name(), reserva.getCompradorTipo() == TipoComprador.CLIENTE ? reserva.getClienteId() : reserva.getProveedorId()));
+            if (compradorRef != null && (comprador == null || !comprador.id().equals(compradorRef.id()))) {
+                throw new ValidacionNegocioException("El comprador de un retiro es el confirmado en la reserva; si es otra persona, cámbialo en la reserva.");
+            }
+        } else {
+            comprador = compradorService.resolver(compradorRef);
+            if (desdePanel) compradorService.validarParaCanal(modalidad, comprador);
         }
 
         // Validar, resolver precio y bloquear/validar stock de cada linea ANTES de escribir nada. Orden
@@ -168,6 +189,17 @@ public class VentaService {
         venta.setTipoCliente(modalidad);
         venta.setTotal(total);
         venta.setVendedor(vendedor);
+        if (reserva != null) venta.setReservaId(reserva.getId());
+        if (comprador != null) {
+            // copia historica de lo usado en esta venta (no cambia si se edita la ficha); el DNI no se copia, el RUC solo si lo tiene
+            venta.setCompradorTipo(comprador.tipo());
+            venta.setClienteId(comprador.tipo() == TipoComprador.CLIENTE ? comprador.id() : null);
+            venta.setProveedorId(comprador.tipo() == TipoComprador.PROVEEDOR ? comprador.id() : null);
+            venta.setCompradorNombre(comprador.nombre());
+            venta.setCompradorRuc(comprador.ruc());
+        } else if (reserva != null) {
+            venta.setCompradorNombre(reserva.getNombreCliente());
+        }
 
         try {
             // saveAndFlush(), NO save(): una violacion de UNIQUE(uuid_cliente) por carrera concurrente se
@@ -250,6 +282,13 @@ public class VentaService {
     // crear()) -- nunca se reinterpreta como una correccion silenciosa de la venta existente. Comparacion de
     // tipoCliente por texto (no se parsea a enum aqui): un reintento con el mismo uuidCliente de una venta ya
     // confirmada nunca debe fallar por un tipoCliente invalido que ni siquiera hace falta volver a validar.
+    /** Reintento con el mismo uuidCliente: el comprador pedido debe ser el mismo que quedo (o ninguno en ambos). */
+    private static boolean mismoComprador(Venta existente, ClienteDtos.CompradorRef ref) {
+        if (ref == null) return existente.getCompradorTipo() == null;
+        UUID id = existente.getCompradorTipo() == TipoComprador.CLIENTE ? existente.getClienteId() : existente.getProveedorId();
+        return existente.getCompradorTipo() != null && existente.getCompradorTipo().name().equalsIgnoreCase(ref.tipo().trim()) && ref.id().equals(id);
+    }
+
     private boolean coincideConSolicitud(Venta existente, LocalDate fecha, String tipoClienteStr, List<DetalleVentaRequest> detallesSolicitados) {
         if (!existente.getFecha().equals(fecha)) return false;
         if (!existente.getTipoCliente().name().equals(tipoClienteStr)) return false;
@@ -304,7 +343,12 @@ public class VentaService {
                         d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal(),
                         d.getAfectacionIgv() != null ? d.getAfectacionIgv().name() : null, d.getTasaIgv(), d.getValorVenta(), d.getIgv()))
                 .toList();
-        return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(), detalles, v.getTotal(), resumenIgv(lineas, v.getTotal()));
+        UUID compradorId = v.getCompradorTipo() == TipoComprador.CLIENTE ? v.getClienteId() : v.getProveedorId();
+        ClienteDtos.CompradorResumen comprador = v.getCompradorTipo() == null && v.getCompradorNombre() == null ? null
+                : new ClienteDtos.CompradorResumen(v.getCompradorTipo() == null ? null : v.getCompradorTipo().name(), compradorId,
+                        v.getCompradorNombre(), v.getCompradorRuc());
+        return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(), detalles, v.getTotal(), resumenIgv(lineas, v.getTotal()),
+                comprador, v.getReservaId(), v.getReservaId() == null ? null : reservaService.codigoDe(v.getReservaId()));
     }
 
     // Fase G: suma de la foto tributaria de las lineas. Nada se recalcula: una linea sin foto queda "sin determinar".

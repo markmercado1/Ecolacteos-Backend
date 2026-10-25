@@ -131,6 +131,8 @@ public class SecurityConfig {
                 .requestMatchers(HttpMethod.POST, "/api/catalogo/reservas", "/api/catalogo/reservas/consulta").permitAll()
                 // Fase 6: reglas de reserva para la web publica (solo lectura, sin datos de clientes).
                 .requestMatchers(HttpMethod.GET, "/api/catalogo/reservas/reglas").permitAll()
+                // Fase H: avisos de datos personales vigentes (los muestra la web publica antes de reservar)
+                .requestMatchers(HttpMethod.GET, "/api/catalogo/privacidad").permitAll()
                 .requestMatchers("/swagger-ui.html", "/swagger-ui/**", "/v3/api-docs/**").permitAll()
                 .anyRequest().authenticated()
             )

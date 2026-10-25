@@ -5,6 +5,7 @@ import com.planta.acopio.service.BusquedaTexto;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import java.time.LocalDate;
@@ -43,6 +44,7 @@ public interface VentaRepository extends JpaRepository<Venta, UUID> {
             "(CAST(:tipoCliente AS varchar) IS NULL OR v.tipo_cliente = CAST(:tipoCliente AS varchar)) AND " +
             "(" + BusquedaTexto.SIN_TERMINO + " OR " +
             BusquedaTexto.PLEGAR_ABRE + "u.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "coalesce(v.comprador_nombre, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
             "EXISTS (SELECT 1 FROM venta_detalle vd JOIN presentacion pr ON pr.id = vd.presentacion_id " +
             "JOIN producto pd ON pd.id = pr.producto_id WHERE vd.venta_id = v.id AND (" +
             BusquedaTexto.PLEGAR_ABRE + "pd.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
@@ -61,4 +63,26 @@ public interface VentaRepository extends JpaRepository<Venta, UUID> {
     // una columna de zona a venta porque no fue parte de las mejoras aprobadas.
     @Query("SELECT v.tipoCliente, COALESCE(SUM(v.total), 0) FROM Venta v GROUP BY v.tipoCliente")
     List<Object[]> margenAgrupadoPorTipoCliente();
+
+    // ------------------------------------------------------------------ Fase H: compras de un comprador identificado
+
+    Page<Venta> findByClienteIdOrderByFechaDescIdDesc(UUID clienteId, Pageable pageable);
+
+    Page<Venta> findByProveedorIdOrderByFechaDescIdDesc(UUID proveedorId, Pageable pageable);
+
+    /** [cantidad, monto, ultima fecha, cuantas vienen de una reserva] de las ventas asociadas a la ficha de cliente. */
+    @Query("SELECT count(v), coalesce(sum(v.total), 0), max(v.fecha), coalesce(sum(CASE WHEN v.reservaId IS NOT NULL THEN 1 ELSE 0 END), 0) "
+            + "FROM Venta v WHERE v.clienteId = :id AND v.fecha BETWEEN :desde AND :hasta")
+    List<Object[]> resumenDeCliente(@Param("id") UUID clienteId, @Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
+
+    @Query("SELECT count(v), coalesce(sum(v.total), 0), max(v.fecha), coalesce(sum(CASE WHEN v.reservaId IS NOT NULL THEN 1 ELSE 0 END), 0) "
+            + "FROM Venta v WHERE v.proveedorId = :id AND v.fecha BETWEEN :desde AND :hasta")
+    List<Object[]> resumenDeProveedor(@Param("id") UUID proveedorId, @Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta);
+
+    /** Fusion manual de fichas: las ventas del origen pasan al destino (la copia historica del nombre no cambia). */
+    @Modifying
+    @Query("UPDATE Venta v SET v.clienteId = :destino WHERE v.clienteId = :origen")
+    int moverCliente(@Param("origen") UUID origen, @Param("destino") UUID destino);
+
+    Optional<Venta> findByReservaId(UUID reservaId);
 }

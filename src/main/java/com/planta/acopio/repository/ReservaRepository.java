@@ -7,6 +7,7 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 
@@ -62,4 +63,14 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
     Page<Reserva> buscar(@Param("estado") String estado, @Param("fecha") LocalDate fecha, @Param("telefono") String telefono,
                          @Param("codigo") String codigo, @Param("busqueda") String busqueda, @Param("ahora") LocalDateTime ahora,
                          @Param("hoy") LocalDate hoy, Pageable pageable);
+
+    // ------------------------------------------------------------------ Fase H
+
+    java.util.List<Reserva> findByClienteIdOrderByCreadoEnDesc(UUID clienteId);
+
+    java.util.List<Reserva> findByProveedorIdOrderByCreadoEnDesc(UUID proveedorId);
+
+    @Modifying
+    @Query("UPDATE Reserva r SET r.clienteId = :destino WHERE r.clienteId = :origen")
+    int moverCliente(@Param("origen") UUID origen, @Param("destino") UUID destino);
 }

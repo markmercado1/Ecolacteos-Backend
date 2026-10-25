@@ -16,8 +16,15 @@ public record HistorialResumenResponse(
     EntregasResumen entregas,
     CalidadResumen calidad,
     PagosResumen pagos,
-    List<HistorialZonaResponse> zonas
+    List<HistorialZonaResponse> zonas,
+    // Fase H: compras del proveedor como comprador (solo ADMIN); las ventas anonimas no se le atribuyen.
+    ClienteDtos.ComprasResumen compras
 ) {
+    public HistorialResumenResponse(UUID proveedorId, String proveedorNombre, String zonaActualNombre, List<String> secciones,
+                                    EntregasResumen entregas, CalidadResumen calidad, PagosResumen pagos, List<HistorialZonaResponse> zonas) {
+        this(proveedorId, proveedorNombre, zonaActualNombre, secciones, entregas, calidad, pagos, zonas, null);
+    }
+
 
     /** Lo recibido: los litros originales nunca cambian; los efectivos incluyen la ultima correccion justificada. */
     public record EntregasResumen(

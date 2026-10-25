@@ -83,11 +83,14 @@ public class ReservaService {
     private final ReservaConfig config;
     private final ReglaVencimiento regla;
 
+    private final CompradorService compradorService;
+
     public ReservaService(ReservaRepository reservaRepository, ReservaDetalleRepository detalleRepository,
                           ReservaEventoRepository eventoRepository, PresentacionRepository presentacionRepository,
                           PrecioQuesoRepository precioRepository, UsuarioRepository usuarioRepository,
                           InventarioService inventarioService, ReservaCompromisos compromisos, ReservaConfig config,
-                          ReglaVencimiento regla) {
+                          ReglaVencimiento regla, CompradorService compradorService) {
+        this.compradorService = compradorService;
         this.reservaRepository = reservaRepository;
         this.detalleRepository = detalleRepository;
         this.eventoRepository = eventoRepository;
@@ -181,6 +184,9 @@ public class ReservaService {
         r.setTelefono(telefono);
         r.setCorreo(correo);
         r.setNotaCliente(nota);
+        // Fase H: version del aviso de datos personales que mostro la web (evidencia del deber de informar); opcional y acotada
+        String aviso = dto.avisoPrivacidadVersion() == null || dto.avisoPrivacidadVersion().isBlank() ? null : dto.avisoPrivacidadVersion().trim();
+        r.setAvisoPrivacidadVersion(aviso == null || aviso.length() > 20 ? null : aviso);
         r.setFechaRetiro(dto.fechaRetiro());
         r.setFechaMaximaRetiro(p.fechaMaxima(hoy));
         r.setCreadoEn(ahora);
@@ -387,6 +393,50 @@ public class ReservaService {
         return aDetalle(r);
     }
 
+    // ================================================================== Fase H: comprador confirmado
+
+    /**
+     * El personal confirma QUIEN es el comprador de la reserva (una ficha de cliente o de proveedor que ya existe), despues de
+     * verificarlo con la persona. Una reserva nunca crea una ficha por si sola. Solo mientras esta PENDIENTE o CONFIRMADA; no cambia
+     * importes, lineas ni estado. Al retirarla, la venta usa este comprador sin volver a pedir datos.
+     */
+    @Transactional
+    public ReservaResponse vincularComprador(UUID id, com.planta.acopio.dto.ClienteDtos.CompradorRef ref) {
+        LocalDateTime ahora = regla.ahora();
+        Reserva r = bloquear(id);
+        exigirEstado(r, ahora, ahora.toLocalDate(), "cambiar el comprador de", EstadoReserva.PENDIENTE, EstadoReserva.CONFIRMADA);
+        CompradorService.Comprador c = compradorService.resolver(ref);
+        if (!c.activo()) throw new ValidacionNegocioException("La ficha de " + c.nombre() + " está desactivada.");
+        r.setCompradorTipo(c.tipo());
+        r.setClienteId(c.tipo() == com.planta.acopio.entity.TipoComprador.CLIENTE ? c.id() : null);
+        r.setProveedorId(c.tipo() == com.planta.acopio.entity.TipoComprador.PROVEEDOR ? c.id() : null);
+        Usuario usuario = usuarioActual();
+        r.setCompradorVinculadoPor(usuario == null ? null : usuario.getId());
+        r.setCompradorVinculadoEn(ahora);
+        eventoRepository.save(new ReservaEvento(r, TipoEventoReserva.COMPRADOR_VINCULADO, usuario,
+                (c.tipo() == com.planta.acopio.entity.TipoComprador.CLIENTE ? "Cliente: " : "Proveedor: ") + c.nombre(), ahora));
+        return aDetalle(r);
+    }
+
+    @Transactional
+    public ReservaResponse desvincularComprador(UUID id) {
+        LocalDateTime ahora = regla.ahora();
+        Reserva r = bloquear(id);
+        exigirEstado(r, ahora, ahora.toLocalDate(), "cambiar el comprador de", EstadoReserva.PENDIENTE, EstadoReserva.CONFIRMADA);
+        if (r.getCompradorTipo() == null) return aDetalle(r);
+        r.setCompradorTipo(null);
+        r.setClienteId(null);
+        r.setProveedorId(null);
+        r.setCompradorVinculadoPor(null);
+        r.setCompradorVinculadoEn(null);
+        eventoRepository.save(new ReservaEvento(r, TipoEventoReserva.COMPRADOR_DESVINCULADO, usuarioActual(), null, ahora));
+        return aDetalle(r);
+    }
+
+    public String codigoDe(UUID reservaId) {
+        return reservaRepository.findById(reservaId).map(Reserva::getCodigo).orElse(null);
+    }
+
     // ================================================================== retiro (dentro de la transaccion de la venta)
 
     /** Las lineas de la reserva como lineas de venta: el retiro completo. */
@@ -561,7 +611,15 @@ public class ReservaService {
                 comprometida(efectivo) && sinCobertura(r, lineas), r.getVentaId(),
                 lineas.stream().map(d -> new ReservaResponse.Linea(d.getPresentacion().getId(), d.getPresentacion().getProducto().getNombre(),
                         d.getPresentacion().getNombre(), d.getPresentacion().getUnidadConteo(), d.getCantidad(), d.getPrecioUnitario(), subtotal(d))).toList(),
-                eventos);
+                eventos, comprador(r));
+    }
+
+    /** Fase H: comprador confirmado de la reserva (nombre actual de su ficha), o null. */
+    private com.planta.acopio.dto.ClienteDtos.CompradorResumen comprador(Reserva r) {
+        if (r.getCompradorTipo() == null) return null;
+        UUID id = r.getCompradorTipo() == com.planta.acopio.entity.TipoComprador.CLIENTE ? r.getClienteId() : r.getProveedorId();
+        CompradorService.Comprador c = compradorService.resolverAunqueFusionado(r.getCompradorTipo(), id);
+        return new com.planta.acopio.dto.ClienteDtos.CompradorResumen(r.getCompradorTipo().name(), id, c == null ? null : c.nombre(), null);
     }
 
     private static boolean comprometida(EstadoReserva efectivo) {

@@ -21,6 +21,7 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -99,6 +100,19 @@ public class ReservaController {
     @PutMapping("/{id}/cancelar")
     public ResponseEntity<ReservaResponse> cancelar(@PathVariable UUID id, @RequestBody @Valid MotivoReservaRequest dto) {
         return ResponseEntity.ok(service.cancelar(id, dto));
+    }
+
+    // Fase H: el personal confirma quien es el comprador de la reserva (ficha de cliente o de proveedor existente). No crea fichas.
+    @Operation(summary = "Vincular el comprador confirmado", description = "Roles: VENTAS y ADMIN. Solo PENDIENTE o CONFIRMADA. `{tipo: CLIENTE|PROVEEDOR, id}`. "
+            + "No cambia importes ni estado; al retirar, la venta usa este comprador sin volver a pedir datos.")
+    @PutMapping("/{id}/comprador")
+    public ResponseEntity<ReservaResponse> vincularComprador(@PathVariable UUID id, @RequestBody @Valid com.planta.acopio.dto.ClienteDtos.CompradorRef dto) {
+        return ResponseEntity.ok(service.vincularComprador(id, dto));
+    }
+
+    @DeleteMapping("/{id}/comprador")
+    public ResponseEntity<ReservaResponse> desvincularComprador(@PathVariable UUID id) {
+        return ResponseEntity.ok(service.desvincularComprador(id));
     }
 
     @Operation(summary = "Registrar el retiro de una reserva confirmada", description = "Crea la venta real con TODAS las líneas (canal PUBLICO, FEFO, kardex) "
