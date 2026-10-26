@@ -27,6 +27,10 @@ public final class ClienteDtos {
      * Registro voluntario. Solo nombre y telefono son obligatorios (y la autorizacion del registro). `avisoVersion` = version del
      * aviso que se le leyo/mostro. `confirmadoSinCoincidencia` = el trabajador confirmo con el comprador que NO es ninguna de las
      * fichas que comparten su telefono (si las hay y no se confirma, 409).
+     *
+     * Tipo de cliente y canal (opcionales; por defecto regular y PUBLICO): `mayorista` = true solo lo puede pedir ADMIN y exige
+     * `motivoMayorista` (misma regla que PUT /{id}/mayorista). `canalHabitual` = PUBLICO o MAYORISTA (este solo si es mayorista): es
+     * el canal que el panel propone al vender a esta ficha.
      */
     public record ClienteRequest(
         String tipoPersona,
@@ -39,11 +43,35 @@ public final class ClienteDtos {
         @NotNull @Valid AutorizacionRegistro autorizacionRegistro,
         @Valid AutorizacionComercial comunicaciones,
         @NotBlank String avisoVersion,
-        boolean confirmadoSinCoincidencia
-    ) {}
+        boolean confirmadoSinCoincidencia,
+        Boolean mayorista,
+        String motivoMayorista,
+        String canalHabitual
+    ) {
+        /** Firma anterior (sin tipo ni canal): regular y PUBLICO. */
+        public ClienteRequest(String tipoPersona, String nombre, String telefono, String correo, String dni, String ruc, String razonSocial,
+                              AutorizacionRegistro autorizacionRegistro, AutorizacionComercial comunicaciones, String avisoVersion,
+                              boolean confirmadoSinCoincidencia) {
+            this(tipoPersona, nombre, telefono, correo, dni, ruc, razonSocial, autorizacionRegistro, comunicaciones, avisoVersion,
+                    confirmadoSinCoincidencia, null, null, null);
+        }
+    }
 
-    /** Edicion de datos (solo ADMIN). Los telefonos tienen su propio endpoint. */
-    public record ClienteUpdateRequest(String tipoPersona, @NotBlank String nombre, String correo, String dni, String ruc, String razonSocial) {}
+    /** Edicion de datos (solo ADMIN). Los telefonos tienen su propio endpoint. `canalHabitual` null = no cambia. */
+    public record ClienteUpdateRequest(String tipoPersona, @NotBlank String nombre, String correo, String dni, String ruc, String razonSocial,
+                                       String canalHabitual) {
+        public ClienteUpdateRequest(String tipoPersona, String nombre, String correo, String dni, String ruc, String razonSocial) {
+            this(tipoPersona, nombre, correo, dni, ruc, razonSocial, null);
+        }
+    }
+
+    /**
+     * Resumen de las reservas VINCULADAS a la ficha (por su estado efectivo: una vencida cuenta como vencida). `activas` = pendientes
+     * + confirmadas que aun retienen unidades; `proximoRetiro` = la fecha de retiro mas cercana entre las activas.
+     */
+    public record ResumenReservas(int pendientes, int confirmadas, int activas, int total, LocalDate proximoRetiro) {
+        public static final ResumenReservas VACIO = new ResumenReservas(0, 0, 0, 0, null);
+    }
 
     public record TelefonoRequest(@NotBlank String telefono) {}
 
@@ -75,7 +103,9 @@ public final class ClienteDtos {
         LocalDateTime creadoEn,
         boolean datosCompletos,
         EstadoAutorizacion registro,
-        EstadoAutorizacion comunicaciones
+        EstadoAutorizacion comunicaciones,
+        String canalHabitual,
+        ResumenReservas reservas
     ) {}
 
     public record ConsentimientoResponse(String finalidad, String estado, List<String> medios, String forma, String avisoVersion,
@@ -95,7 +125,7 @@ public final class ClienteDtos {
      * comprador, puede ser otra persona) o NOMBRE. Telefono y documento siempre enmascarados.
      */
     public record CompradorSugerencia(String tipo, UUID id, String nombre, String telefono, String documento, boolean mayorista,
-                                      boolean activo, String coincidencia) {}
+                                      boolean activo, String coincidencia, String canalHabitual) {}
 
     public record LineaCompra(String producto, String presentacion, int cantidad, BigDecimal subtotal) {}
 

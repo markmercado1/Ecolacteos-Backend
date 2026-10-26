@@ -265,6 +265,118 @@ class ClientesCompradoresIntegrationTest {
         enviar(post("/api/clientes/" + cc.get("id").asText() + "/fusionar"), admin, "{\"destinoId\":\"" + dd.get("id").asText() + "\",\"motivo\":\"prueba\"}", 409);
     }
 
+    // ------------------------------------------------------------------ refactor: tipo, canal, reservas en la tabla, exportacion
+
+    @Test
+    void elTipoYElCanalSeValidanAlRegistrarYNoSeConfunden() throws Exception {
+        // por defecto: regular y canal PUBLICO
+        JsonNode regular = enviar(post("/api/clientes"), ventas, registro("Regular " + sufijo, telefono(20), true, false), 201);
+        assertThat(regular.get("mayorista").asBoolean()).isFalse();
+        assertThat(regular.get("canalHabitual").asText()).isEqualTo("PUBLICO");
+
+        String base = registro("Mayorista " + sufijo, telefono(21), true, false);
+        // VENTAS no habilita mayoristas; ADMIN si, pero con motivo
+        enviar(post("/api/clientes"), ventas, conTipo(base, true, "Compra por mayor", "MAYORISTA"), 400);
+        enviar(post("/api/clientes"), admin, conTipo(base, true, null, "MAYORISTA"), 400);
+        // el canal MAYORISTA exige ser mayorista; PROVEEDOR nunca es de un cliente; valores inventados se rechazan
+        enviar(post("/api/clientes"), admin, conTipo(base, false, null, "MAYORISTA"), 400);
+        enviar(post("/api/clientes"), admin, conTipo(base, false, null, "PROVEEDOR"), 400);
+        enviar(post("/api/clientes"), admin, conTipo(base, false, null, "VIP"), 400);
+        assertThat(contar("cliente WHERE nombre = 'Mayorista " + sufijo + "'")).isZero();
+
+        JsonNode m = enviar(post("/api/clientes"), admin, conTipo(base, true, "Compra por mayor para su bodega", "MAYORISTA"), 201);
+        assertThat(m.get("mayorista").asBoolean()).isTrue();
+        assertThat(m.get("canalHabitual").asText()).isEqualTo("MAYORISTA");
+        assertThat(jdbc.queryForObject("SELECT mayorista_motivo FROM cliente WHERE id = ?", String.class, UUID.fromString(m.get("id").asText())))
+                .isEqualTo("Compra por mayor para su bodega");
+        // la sugerencia lleva el canal que el panel propone; la venta MAYORISTA funciona sin pasos extra
+        JsonNode sug = enviar(post("/api/compradores/sugerencias"), ventas, "{\"telefono\":\"" + telefono(21) + "\"}", 200);
+        assertThat(sug.get(0).get("canalHabitual").asText()).isEqualTo("MAYORISTA");
+        vender(ventas, "MAYORISTA", "{\"tipo\":\"CLIENTE\",\"id\":\"" + m.get("id").asText() + "\"}", 1, 201);
+        // al quitarle la condicion de mayorista, el canal propuesto vuelve a PUBLICO
+        JsonNode quitado = enviar(put("/api/clientes/" + m.get("id").asText() + "/mayorista"), admin, "{\"mayorista\":false,\"motivo\":\"Ya no compra por mayor\"}", 200);
+        assertThat(quitado.get("canalHabitual").asText()).isEqualTo("PUBLICO");
+    }
+
+    @Test
+    void laTablaMuestraElResumenDeReservasYSeActualizaTrasCadaCambio() throws Exception {
+        JsonNode c = enviar(post("/api/clientes"), ventas, registro("Con reservas " + sufijo, telefono(22), true, false), 201);
+        String id = c.get("id").asText();
+        assertThat(c.get("reservas").get("activas").asInt()).isZero();
+
+        UUID r1 = reservaConfirmada("Con reservas", telefono(22), 1);
+        UUID r2 = reservaConfirmada("Con reservas", telefono(22), 1);
+        // una reserva con el mismo telefono pero SIN vincular no se cuenta (el telefono solo sugiere)
+        assertThat(filaDe(id).get("reservas").get("total").asInt()).isZero();
+        enviar(put("/api/reservas/" + r1 + "/comprador"), ventas, "{\"tipo\":\"CLIENTE\",\"id\":\"" + id + "\"}", 200);
+        enviar(put("/api/reservas/" + r2 + "/comprador"), ventas, "{\"tipo\":\"CLIENTE\",\"id\":\"" + id + "\"}", 200);
+        JsonNode resumen = filaDe(id).get("reservas");
+        assertThat(resumen.get("activas").asInt()).isEqualTo(2);
+        assertThat(resumen.get("confirmadas").asInt()).isEqualTo(2);
+        assertThat(resumen.get("proximoRetiro").asText()).isEqualTo(hoy.toString());
+
+        // retirar una: deja de estar activa pero sigue en el total
+        enviar(post("/api/reservas/" + r1 + "/retirar"), ventas, "{\"uuidCliente\":\"" + UUID.randomUUID() + "\"}", 201);
+        resumen = filaDe(id).get("reservas");
+        assertThat(resumen.get("activas").asInt()).isEqualTo(1);
+        assertThat(resumen.get("total").asInt()).isEqualTo(2);
+        // una confirmada cuya fecha ya paso cuenta como vencida (mismo estado efectivo que la pantalla de reservas)
+        jdbc.update("UPDATE reserva SET fecha_retiro = ? WHERE id = ?", hoy.minusDays(1), r2);
+        resumen = json.readTree(leer(ventas, "/api/clientes/" + id)).get("reservas");
+        assertThat(resumen.get("activas").asInt()).isZero();
+        assertThat(resumen.get("proximoRetiro").isNull()).isTrue();
+    }
+
+    @Test
+    void laExportacionDeClientesRespetaLosFiltrosYEsSoloDeAdmin() throws Exception {
+        enviar(post("/api/clientes"), ventas, registro("Exporta Uno " + sufijo, telefono(23), true, true), 201);
+        enviar(post("/api/clientes"), ventas, registro("Exporta Dos " + sufijo, telefono(24), true, false), 201);
+        mvc.perform(get("/api/exportaciones/clientes").header("Authorization", ventas)).andExpect(status().isForbidden());
+
+        java.util.List<String> todos = nombresExportados("busqueda=Exporta+" + sufijo);
+        assertThat(todos).containsExactlyInAnyOrder("Exporta Uno " + sufijo, "Exporta Dos " + sufijo);
+        java.util.List<String> conPromos = nombresExportados("conComunicaciones=true&busqueda=Exporta+" + sufijo);
+        assertThat(conPromos).containsExactly("Exporta Uno " + sufijo);
+    }
+
+    private JsonNode filaDe(String id) throws Exception {
+        for (JsonNode fila : listar("/api/clientes?busqueda=" + sufijo + "&size=100", ventas).get("contenido")) {
+            if (fila.get("id").asText().equals(id)) return fila;
+        }
+        throw new AssertionError("La ficha " + id + " no aparece en el padrón");
+    }
+
+    private java.util.List<String> nombresExportados(String query) throws Exception {
+        byte[] xlsx = mvc.perform(get("/api/exportaciones/clientes?" + query).header("Authorization", admin)).andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsByteArray();
+        java.util.List<String> nombres = new java.util.ArrayList<>();
+        try (var libro = new org.apache.poi.xssf.usermodel.XSSFWorkbook(new java.io.ByteArrayInputStream(xlsx))) {
+            var hoja = libro.getSheetAt(0);
+            int columna = -1, encabezados = -1;
+            for (int f = 0; f <= hoja.getLastRowNum() && columna < 0; f++) {
+                var fila = hoja.getRow(f);
+                if (fila == null) continue;
+                for (var celda : fila) {
+                    if ("Cliente".equals(celda.toString())) { columna = celda.getColumnIndex(); encabezados = f; }
+                }
+            }
+            assertThat(columna).isNotNegative();
+            for (int f = encabezados + 1; f <= hoja.getLastRowNum(); f++) {
+                var fila = hoja.getRow(f);
+                if (fila != null && fila.getCell(columna) != null && fila.getCell(columna).toString().startsWith("Exporta ")
+                        && fila.getCell(columna).toString().endsWith(" " + sufijo)) {
+                    nombres.add(fila.getCell(columna).toString());
+                }
+            }
+        }
+        return nombres;
+    }
+
+    private static String conTipo(String registro, boolean mayorista, String motivo, String canal) {
+        return registro.substring(0, registro.length() - 1) + ",\"mayorista\":" + mayorista + ",\"motivoMayorista\":"
+                + (motivo == null ? "null" : "\"" + motivo + "\"") + ",\"canalHabitual\":\"" + canal + "\"}";
+    }
+
     // ------------------------------------------------------------------ movil y avisos
 
     @Test

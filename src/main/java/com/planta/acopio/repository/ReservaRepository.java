@@ -70,6 +70,9 @@ public interface ReservaRepository extends JpaRepository<Reserva, UUID> {
 
     java.util.List<Reserva> findByProveedorIdOrderByCreadoEnDesc(UUID proveedorId);
 
+    /** Refactor clientes: reservas vinculadas a las fichas de una pagina del padron (resumen en la tabla). */
+    java.util.List<Reserva> findByClienteIdIn(java.util.Collection<UUID> clienteIds);
+
     @Modifying
     @Query("UPDATE Reserva r SET r.clienteId = :destino WHERE r.clienteId = :origen")
     int moverCliente(@Param("origen") UUID origen, @Param("destino") UUID destino);
