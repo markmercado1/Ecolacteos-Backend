@@ -84,6 +84,7 @@ class ExportacionPermisosWebMvcTest {
     @MockBean private AnalisisCalidadService analisisCalidadService;
     @MockBean private AnomaliaService anomaliaService;
     @MockBean private JornadaService jornadaService;
+    @MockBean private com.planta.acopio.service.ClienteService clienteService;
     @MockBean private UsuarioService usuarioService;
     @MockBean private PrecioLitroService precioLitroService;
     @MockBean private PrecioQuesoService precioQuesoService;
@@ -105,6 +106,7 @@ class ExportacionPermisosWebMvcTest {
     static Stream<Ruta> rutas() {
         return Stream.of(
                 new Ruta("/api/exportaciones/proveedores", Set.of("ADMIN")),
+                new Ruta("/api/exportaciones/clientes", Set.of("ADMIN")),
                 new Ruta("/api/exportaciones/acopios", Set.of("ACOPIADOR", "ADMIN", "CALIDAD", "PRODUCCION")),
                 new Ruta("/api/exportaciones/pagos", Set.of("ADMIN", "RECEPCION")),
                 new Ruta("/api/exportaciones/ventas", Set.of("VENTAS", "ADMIN")),
@@ -146,13 +148,14 @@ class ExportacionPermisosWebMvcTest {
         when(reservaService.listar(any(), any(), any(), any(), any(), any())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
         when(inventarioService.listarStockPaginado(any(), any(), any())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
         when(precioQuesoService.listarPaginado(any(), any(), any())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
+        when(clienteService.buscar(any(), any(), any(), any(), any(), org.mockito.ArgumentMatchers.anyBoolean())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
     }
 
     private Object[] todosLosServicios() {
         return new Object[]{proveedorService, registroAcopioService, pagoService, ventaService, reservaService, conciliacionService,
                 unidadService, loteProduccionService, informeService, inventarioService, inventarioInsumoService, analisisCalidadService,
                 anomaliaService, jornadaService, usuarioService, precioLitroService, precioQuesoService, zonaService, motivoService,
-                familiaService, productoService, insumoService, recetaService, configuracionService};
+                familiaService, productoService, insumoService, recetaService, configuracionService, clienteService};
     }
 
     @ParameterizedTest(name = "{0}")
