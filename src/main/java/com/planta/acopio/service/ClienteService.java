@@ -8,11 +8,13 @@ import com.planta.acopio.dto.ClienteDtos.ComercialRequest;
 import com.planta.acopio.dto.ClienteDtos.ConsentimientoResponse;
 import com.planta.acopio.dto.ClienteDtos.EstadoAutorizacion;
 import com.planta.acopio.dto.ClienteDtos.FusionResponse;
+import com.planta.acopio.dto.ClienteDtos.ResumenReservas;
 import com.planta.acopio.dto.PaginaResponse;
 import com.planta.acopio.entity.Cliente;
 import com.planta.acopio.entity.ClienteConsentimiento;
 import com.planta.acopio.entity.ClienteFusion;
 import com.planta.acopio.entity.ClienteTelefono;
+import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.entity.TipoPersona;
 import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.exception.ConflictoNegocioException;
@@ -52,6 +54,9 @@ import java.util.stream.Collectors;
 //    con ese telefono, el trabajador debe confirmar con el comprador que es otra persona (si no, 409).
 //  * La autorizacion de comunicaciones comerciales es independiente del registro, nunca se asume y se revoca con la misma facilidad.
 //  * Las fichas duplicadas solo se fusionan a mano (ADMIN), con motivo y constancia; nunca automaticamente.
+//  * Tipo de cliente (regular o mayorista) y canal habitual (V34) son cosas distintas: el tipo HABILITA el precio MAYORISTA (solo
+//    ADMIN, con motivo); el canal habitual es el que el panel PROPONE al vender (PUBLICO o, si es mayorista, MAYORISTA). Cada venta
+//    elige su canal y se valida igual que antes.
 @Service
 public class ClienteService {
 
@@ -70,11 +75,12 @@ public class ClienteService {
     private final ReservaRepository reservaRepository;
     private final UsuarioRepository usuarioRepository;
     private final PrivacidadService privacidad;
+    private final HistorialComprasService historialCompras;
 
     public ClienteService(ClienteRepository clienteRepository, ClienteTelefonoRepository telefonoRepository,
                           ClienteConsentimientoRepository consentimientoRepository, ClienteFusionRepository fusionRepository,
                           ProveedorRepository proveedorRepository, VentaRepository ventaRepository, ReservaRepository reservaRepository,
-                          UsuarioRepository usuarioRepository, PrivacidadService privacidad) {
+                          UsuarioRepository usuarioRepository, PrivacidadService privacidad, HistorialComprasService historialCompras) {
         this.clienteRepository = clienteRepository;
         this.telefonoRepository = telefonoRepository;
         this.consentimientoRepository = consentimientoRepository;
@@ -84,12 +90,14 @@ public class ClienteService {
         this.reservaRepository = reservaRepository;
         this.usuarioRepository = usuarioRepository;
         this.privacidad = privacidad;
+        this.historialCompras = historialCompras;
     }
 
     // ------------------------------------------------------------------ registro voluntario
 
+    /** `esAdmin`: ve los datos completos y puede registrar la ficha ya habilitada como mayorista (con motivo). */
     @Transactional
-    public ClienteResponse registrar(ClienteRequest dto, boolean verCompleto) {
+    public ClienteResponse registrar(ClienteRequest dto, boolean esAdmin) {
         if (dto.autorizacionRegistro() == null || !dto.autorizacionRegistro().otorgada()) {
             throw new ValidacionNegocioException("Sin la autorización del comprador no se crea su ficha. La venta puede seguir como «Cliente varios», "
                     + "al mismo precio.");
@@ -98,6 +106,13 @@ public class ClienteService {
         String telefono = telefono(dto.telefono());
         Documentos doc = documentos(tipo(dto.tipoPersona(), TipoPersona.NATURAL), dto.nombre(), dto.dni(), dto.ruc(), dto.razonSocial());
         String correo = correo(dto.correo());
+        boolean mayorista = Boolean.TRUE.equals(dto.mayorista());
+        String motivoMayorista = null;
+        if (mayorista) {
+            if (!esAdmin) throw new ValidacionNegocioException("Solo ADMIN habilita a un cliente como mayorista. Regístralo como regular y pídeselo a ADMIN.");
+            motivoMayorista = motivoMayorista(dto.motivoMayorista());
+        }
+        String canal = canalHabitual(dto.canalHabitual(), mayorista);
         verificarUnicos(doc, null);
         if (!dto.confirmadoSinCoincidencia()) {
             List<String> mismos = fichasConTelefono(telefono);
@@ -114,6 +129,13 @@ public class ClienteService {
         Cliente c = new Cliente();
         aplicar(c, doc);
         c.setCorreo(correo);
+        c.setCanalHabitual(canal);
+        if (mayorista) {
+            c.setMayorista(true);
+            c.setMayoristaMotivo(motivoMayorista);
+            c.setMayoristaCambiadoPor(usuario);
+            c.setMayoristaCambiadoEn(LocalDateTime.now(LIMA));
+        }
         c.setCreadoPor(usuario);
         c.setCreadoEn(LocalDateTime.now(LIMA));
         c = clienteRepository.saveAndFlush(c);
@@ -124,11 +146,11 @@ public class ClienteService {
             consentimientoRepository.save(consentimiento(c.getId(), ClienteConsentimiento.COMERCIAL, ClienteConsentimiento.OTORGADO,
                     String.join(",", medios), formaComercial, dto.avisoVersion(), usuario, null));
         }
-        return respuesta(c, verCompleto);
+        return respuesta(c, esAdmin);
     }
 
     /** Fichas vigentes con ese telefono, como "nombre (ficha de cliente)" o "nombre (proveedor)". */
-    List<String> fichasConTelefono(String telefono) {
+    public List<String> fichasConTelefono(String telefono) {
         List<String> nombres = new ArrayList<>();
         clienteRepository.conTelefono(telefono).forEach(c -> nombres.add(c.getNombre() + " (cliente)"));
         proveedorRepository.conTelefonoTerminadoEn(telefono.substring(3)).forEach(p -> nombres.add(p.getNombre() + " (proveedor)"));
@@ -144,6 +166,7 @@ public class ClienteService {
         verificarUnicos(doc, id);
         aplicar(c, doc);
         c.setCorreo(correo(dto.correo()));
+        if (dto.canalHabitual() != null) c.setCanalHabitual(canalHabitual(dto.canalHabitual(), c.isMayorista()));
         return respuesta(c, true);
     }
 
@@ -171,10 +194,10 @@ public class ClienteService {
     @Transactional
     public ClienteResponse cambiarMayorista(UUID id, boolean mayorista, String motivo) {
         Cliente c = vigente(id);
-        String m = motivo == null ? "" : motivo.trim();
-        if (m.isEmpty()) throw new ValidacionNegocioException("El motivo es obligatorio.");
-        if (m.length() > 300) throw new ValidacionNegocioException("El motivo no puede superar 300 caracteres.");
+        String m = motivoMayorista(motivo);
         c.setMayorista(mayorista);
+        // sin la habilitacion, el canal que se propone vuelve a PUBLICO (V34: MAYORISTA exige ficha mayorista)
+        if (!mayorista) c.setCanalHabitual(TipoClienteVenta.PUBLICO.name());
         c.setMayoristaMotivo(m);
         c.setMayoristaCambiadoPor(usuarioActual());
         c.setMayoristaCambiadoEn(LocalDateTime.now(LIMA));
@@ -297,9 +320,12 @@ public class ClienteService {
         String digitos = busqueda == null ? "" : busqueda.replaceAll("[^0-9]", "");
         String telefono = digitos.length() >= 3 ? "%" + digitos + "%" : null;
         Page<Cliente> pagina = clienteRepository.buscar(activo, mayorista, conComercial, patron, patron == null ? null : telefono, pageable);
-        Map<UUID, List<String>> telefonos = telefonoRepository.findByClienteIdIn(pagina.getContent().stream().map(Cliente::getId).toList()).stream()
+        List<UUID> ids = pagina.getContent().stream().map(Cliente::getId).toList();
+        Map<UUID, List<String>> telefonos = telefonoRepository.findByClienteIdIn(ids).stream()
                 .collect(Collectors.groupingBy(ClienteTelefono::getClienteId, Collectors.mapping(ClienteTelefono::getTelefono, Collectors.toList())));
-        return PaginaResponse.de(pagina.map(c -> respuesta(c, telefonos.getOrDefault(c.getId(), List.of()), verCompleto)));
+        Map<UUID, ResumenReservas> reservas = historialCompras.reservasPorCliente(ids);
+        return PaginaResponse.de(pagina.map(c -> respuesta(c, telefonos.getOrDefault(c.getId(), List.of()),
+                reservas.getOrDefault(c.getId(), ResumenReservas.VACIO), verCompleto)));
     }
 
     public ClienteResponse obtener(UUID id, boolean verCompleto) {
@@ -321,7 +347,7 @@ public class ClienteService {
 
     // ------------------------------------------------------------------ reglas de documentos
 
-    record Documentos(TipoPersona tipo, String nombre, String dni, String ruc, String razonSocial) {}
+    public record Documentos(TipoPersona tipo, String nombre, String dni, String ruc, String razonSocial) {}
 
     static TipoPersona tipo(String valor, TipoPersona porDefecto) {
         return ProveedorService.tipoPersona(valor, porDefecto);
@@ -329,7 +355,7 @@ public class ClienteService {
 
     // Persona natural: nombre obligatorio; DNI (8 digitos) y RUC (10 + DNI si hay DNI) opcionales. Empresa: RUC 20... y razon social
     // obligatorios, sin DNI; nombre opcional (por defecto la razon social). Mismas formas que los proveedores (Fase G).
-    static Documentos documentos(TipoPersona tipo, String nombre, String dni, String ruc, String razonSocial) {
+    public static Documentos documentos(TipoPersona tipo, String nombre, String dni, String ruc, String razonSocial) {
         String n = nombre == null ? "" : nombre.trim().replaceAll("\\s+", " ");
         String d = DocumentoIdentidad.limpiar(dni);
         String r = DocumentoIdentidad.limpiar(ruc);
@@ -356,6 +382,19 @@ public class ClienteService {
         }
         if (n.length() > MAX_NOMBRE) throw new ValidacionNegocioException("El nombre no puede superar " + MAX_NOMBRE + " caracteres.");
         return new Documentos(tipo, n, d, r, razon);
+    }
+
+    /**
+     * Importacion de Excel: por que esos documentos no pueden ser de una ficha NUEVA (las mismas reglas que registrar: DNI/RUC de otra
+     * ficha vigente o de un proveedor), o vacio si pueden. Sin efectos.
+     */
+    public java.util.Optional<String> conflictoDeDocumentos(Documentos doc) {
+        try {
+            verificarUnicos(doc, null);
+            return java.util.Optional.empty();
+        } catch (ConflictoNegocioException e) {
+            return java.util.Optional.of(e.getMessage());
+        }
     }
 
     private void verificarUnicos(Documentos doc, UUID propio) {
@@ -403,7 +442,29 @@ public class ClienteService {
         return c;
     }
 
-    static String forma(String crudo) {
+    private static String motivoMayorista(String motivo) {
+        String m = motivo == null ? "" : motivo.trim();
+        if (m.isEmpty()) throw new ValidacionNegocioException("El motivo es obligatorio.");
+        if (m.length() > 300) throw new ValidacionNegocioException("El motivo no puede superar 300 caracteres.");
+        return m;
+    }
+
+    /** Canal habitual: PUBLICO (por defecto) o MAYORISTA (solo una ficha mayorista). PROVEEDOR es de las fichas de proveedor. */
+    public static String canalHabitual(String crudo, boolean mayorista) {
+        String canal = crudo == null || crudo.isBlank() ? TipoClienteVenta.PUBLICO.name() : crudo.trim().toUpperCase();
+        if (TipoClienteVenta.PROVEEDOR.name().equals(canal)) {
+            throw new ValidacionNegocioException("El canal PROVEEDOR es solo para proveedores del padrón: elige al proveedor como comprador, no una ficha de cliente.");
+        }
+        if (!TipoClienteVenta.PUBLICO.name().equals(canal) && !TipoClienteVenta.MAYORISTA.name().equals(canal)) {
+            throw new ValidacionNegocioException("Canal no válido: «" + crudo + "». Usa PUBLICO o MAYORISTA.");
+        }
+        if (TipoClienteVenta.MAYORISTA.name().equals(canal) && !mayorista) {
+            throw new ValidacionNegocioException("El canal MAYORISTA es solo para clientes habilitados como mayoristas.");
+        }
+        return canal;
+    }
+
+    public static String forma(String crudo) {
         String f = crudo == null ? "" : crudo.trim().toUpperCase();
         if (!FORMAS.contains(f)) {
             throw new ValidacionNegocioException("Indica cómo se obtuvo la autorización: VERBAL_PRESENCIAL, ESCRITO, TELEFONICA o DIGITAL.");
@@ -411,7 +472,7 @@ public class ClienteService {
         return f;
     }
 
-    static List<String> medios(List<String> crudos) {
+    public static List<String> medios(List<String> crudos) {
         Set<String> medios = new LinkedHashSet<>();
         if (crudos != null) crudos.forEach(m -> { if (m != null && !m.isBlank()) medios.add(m.trim().toUpperCase()); });
         if (medios.isEmpty()) throw new ValidacionNegocioException("Elige al menos un medio autorizado (WHATSAPP, SMS, LLAMADA o CORREO).");
@@ -444,17 +505,19 @@ public class ClienteService {
 
     ClienteResponse respuesta(Cliente c, boolean verCompleto) {
         List<String> telefonos = telefonoRepository.findByClienteIdOrderByCreadoEnAsc(c.getId()).stream().map(ClienteTelefono::getTelefono).toList();
-        return respuesta(c, telefonos, verCompleto);
+        ResumenReservas reservas = historialCompras.reservasPorCliente(List.of(c.getId())).getOrDefault(c.getId(), ResumenReservas.VACIO);
+        return respuesta(c, telefonos, reservas, verCompleto);
     }
 
-    private ClienteResponse respuesta(Cliente c, List<String> telefonos, boolean verCompleto) {
+    private ClienteResponse respuesta(Cliente c, List<String> telefonos, ResumenReservas reservas, boolean verCompleto) {
         return new ClienteResponse(c.getId(), c.getTipoPersona().name(), c.getNombre(), c.getRazonSocial(),
                 verCompleto ? c.getDni() : Enmascarar.documento(c.getDni()),
                 verCompleto ? c.getRuc() : Enmascarar.documento(c.getRuc()),
                 verCompleto ? c.getCorreo() : Enmascarar.correo(c.getCorreo()),
                 verCompleto ? telefonos : telefonos.stream().map(Enmascarar::telefono).toList(),
                 c.isMayorista(), c.isActivo(), c.getFusionadoEnId(), c.getCreadoEn(), verCompleto,
-                estado(c.getId(), ClienteConsentimiento.REGISTRO), estado(c.getId(), ClienteConsentimiento.COMERCIAL));
+                estado(c.getId(), ClienteConsentimiento.REGISTRO), estado(c.getId(), ClienteConsentimiento.COMERCIAL), c.getCanalHabitual(),
+                reservas);
     }
 
     private EstadoAutorizacion estado(UUID clienteId, String finalidad) {

@@ -2,6 +2,7 @@ package com.planta.acopio.excel;
 
 import com.planta.acopio.dto.AlertaAnomaliaResponse;
 import com.planta.acopio.dto.AnalisisBandejaResponse;
+import com.planta.acopio.dto.ClienteDtos.ClienteResponse;
 import com.planta.acopio.dto.ConfiguracionSistemaResponse;
 import com.planta.acopio.dto.DetalleSalidaResponse;
 import com.planta.acopio.dto.DetalleVentaResponse;
@@ -61,6 +62,27 @@ public final class ColumnasExportacion {
             texto("Teléfono", 18, ProveedorAdminResponse::telefono),
             texto("Zona actual", 22, ProveedorAdminResponse::zonaActualNombre),
             siNo("Activo", ProveedorAdminResponse::activo)
+    );
+
+    /**
+     * Refactor clientes: padron de clientes (solo ADMIN, datos completos). Mismas columnas que la tabla mas lo que pide gerencia; el
+     * tipo de cliente y el canal habitual van en columnas separadas (no son lo mismo).
+     */
+    public static final List<ColumnaExcel<ClienteResponse>> CLIENTES = List.of(
+            texto("Cliente", 34, ClienteResponse::nombre),
+            texto("Tipo de persona", 16, c -> "EMPRESA".equals(c.tipoPersona()) ? "Empresa" : "Persona natural"),
+            texto("Razón social", 34, ClienteResponse::razonSocial),
+            texto("DNI", 12, ClienteResponse::dni),
+            texto("RUC", 14, ClienteResponse::ruc),
+            texto("Teléfonos", 28, c -> String.join(" · ", c.telefonos())),
+            texto("Correo", 28, ClienteResponse::correo),
+            texto("Tipo de cliente", 14, c -> c.mayorista() ? "Mayorista" : "Regular"),
+            texto("Canal habitual", 14, c -> "MAYORISTA".equals(c.canalHabitual()) ? "Mayorista" : "Público"),
+            texto("Promociones", 26, c -> c.comunicaciones().vigente() ? "Sí (" + String.join(", ", c.comunicaciones().medios()) + ")" : "No"),
+            entero("Reservas activas", c -> c.reservas().activas()),
+            fecha("Próximo retiro", c -> c.reservas().proximoRetiro()),
+            fechaHora("Registrado", ClienteResponse::creadoEn),
+            siNo("Activo", ClienteResponse::activo)
     );
 
     public static final List<ColumnaExcel<RegistroAcopioResponse>> ACOPIOS = List.of(

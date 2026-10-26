@@ -37,6 +37,19 @@ class ClientesReglasTest {
     }
 
     @Test
+    void elCanalHabitualEsPublicoOMayoristaYNoSeConfundeConElTipo() {
+        assertThat(ClienteService.canalHabitual(null, false)).isEqualTo("PUBLICO");
+        assertThat(ClienteService.canalHabitual(" ", true)).isEqualTo("PUBLICO");
+        assertThat(ClienteService.canalHabitual("mayorista", true)).isEqualTo("MAYORISTA");
+        assertThat(ClienteService.canalHabitual("PUBLICO", true)).isEqualTo("PUBLICO"); // un mayorista puede comprar a precio publico
+        assertThatThrownBy(() -> ClienteService.canalHabitual("MAYORISTA", false)).isInstanceOf(ValidacionNegocioException.class)
+                .hasMessageContaining("habilitados como mayoristas");
+        assertThatThrownBy(() -> ClienteService.canalHabitual("PROVEEDOR", true)).isInstanceOf(ValidacionNegocioException.class)
+                .hasMessageContaining("proveedores del padrón");
+        assertThatThrownBy(() -> ClienteService.canalHabitual("VIP", false)).isInstanceOf(ValidacionNegocioException.class);
+    }
+
+    @Test
     void mayoristaExigeUnClienteHabilitadoPorAdmin() {
         assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.MAYORISTA, null)).isInstanceOf(ValidacionNegocioException.class);
         assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.MAYORISTA, cliente(false, true)))

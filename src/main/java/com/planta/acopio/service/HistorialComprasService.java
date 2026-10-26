@@ -5,7 +5,9 @@ import com.planta.acopio.dto.ClienteDtos.CompraResponse;
 import com.planta.acopio.dto.ClienteDtos.HistorialClienteResponse;
 import com.planta.acopio.dto.ClienteDtos.LineaCompra;
 import com.planta.acopio.dto.ClienteDtos.ReservaDeComprador;
+import com.planta.acopio.dto.ClienteDtos.ResumenReservas;
 import com.planta.acopio.dto.PaginaResponse;
+import com.planta.acopio.entity.EstadoReserva;
 import com.planta.acopio.entity.Reserva;
 import com.planta.acopio.entity.TipoComprador;
 import com.planta.acopio.entity.Venta;
@@ -22,6 +24,7 @@ import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +74,35 @@ public class HistorialComprasService {
                         r.getTotal(), r.getVentaId()))
                 .toList();
         return new HistorialClienteResponse(resumen(tipo, id), filas);
+    }
+
+    /**
+     * Resumen de reservas por ficha de cliente para una pagina del padron: una sola consulta y el MISMO estado efectivo que la
+     * pantalla de reservas (una pendiente expirada o una confirmada con su fecha pasada cuentan como vencidas, no como activas).
+     */
+    @Transactional(readOnly = true)
+    public Map<UUID, ResumenReservas> reservasPorCliente(Collection<UUID> clienteIds) {
+        if (clienteIds.isEmpty()) return Map.of();
+        LocalDateTime ahora = LocalDateTime.now(reloj);
+        LocalDate hoy = ahora.toLocalDate();
+        Map<UUID, List<Reserva>> porCliente = new HashMap<>();
+        for (Reserva r : reservaRepository.findByClienteIdIn(clienteIds)) {
+            porCliente.computeIfAbsent(r.getClienteId(), k -> new java.util.ArrayList<>()).add(r);
+        }
+        Map<UUID, ResumenReservas> resumen = new HashMap<>();
+        porCliente.forEach((id, reservas) -> {
+            int pendientes = 0, confirmadas = 0;
+            LocalDate proximo = null;
+            for (Reserva r : reservas) {
+                EstadoReserva e = r.estadoEfectivo(ahora, hoy);
+                if (e == EstadoReserva.PENDIENTE) pendientes++;
+                else if (e == EstadoReserva.CONFIRMADA) confirmadas++;
+                else continue;
+                if (proximo == null || r.getFechaRetiro().isBefore(proximo)) proximo = r.getFechaRetiro();
+            }
+            resumen.put(id, new ResumenReservas(pendientes, confirmadas, pendientes + confirmadas, reservas.size(), proximo));
+        });
+        return resumen;
     }
 
     @Transactional(readOnly = true)

@@ -84,6 +84,7 @@ class ExportacionWebMvcTest {
     @MockBean private AnalisisCalidadService analisisCalidadService;
     @MockBean private AnomaliaService anomaliaService;
     @MockBean private JornadaService jornadaService;
+    @MockBean private com.planta.acopio.service.ClienteService clienteService;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 

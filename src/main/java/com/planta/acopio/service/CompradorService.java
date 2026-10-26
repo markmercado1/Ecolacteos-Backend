@@ -91,12 +91,12 @@ public class CompradorService {
         List<ClienteTelefono> telefonos = telefonoRepository.findByClienteIdOrderByCreadoEnAsc(c.getId());
         String telefono = telefonos.isEmpty() ? null : telefonos.get(0).getTelefono();
         return new CompradorSugerencia(TipoComprador.CLIENTE.name(), c.getId(), c.getNombre(), Enmascarar.telefono(telefono),
-                Enmascarar.documento(c.getRuc() != null ? c.getRuc() : c.getDni()), c.isMayorista(), c.isActivo(), coincidencia);
+                Enmascarar.documento(c.getRuc() != null ? c.getRuc() : c.getDni()), c.isMayorista(), c.isActivo(), coincidencia, c.getCanalHabitual());
     }
 
     private static CompradorSugerencia proveedor(Proveedor p, String coincidencia) {
         return new CompradorSugerencia(TipoComprador.PROVEEDOR.name(), p.getId(), p.getNombre(), Enmascarar.telefono(p.getTelefono()),
-                Enmascarar.documento(p.getRuc() != null ? p.getRuc() : p.getDni()), false, Boolean.TRUE.equals(p.getActivo()), coincidencia);
+                Enmascarar.documento(p.getRuc() != null ? p.getRuc() : p.getDni()), false, Boolean.TRUE.equals(p.getActivo()), coincidencia, null);
     }
 
     // ------------------------------------------------------------------ resolver y validar

@@ -45,6 +45,10 @@ public class Cliente {
     @Column(name = "mayorista_motivo", length = 300)
     private String mayoristaMotivo;
 
+    // V34: canal que el panel propone al vender (PUBLICO o MAYORISTA; MAYORISTA solo si la ficha es mayorista).
+    @Column(name = "canal_habitual", nullable = false, length = 20)
+    private String canalHabitual = "PUBLICO";
+
     @Column(nullable = false)
     private boolean activo = true;
 
@@ -81,6 +85,8 @@ public class Cliente {
     public void setMayoristaCambiadoEn(LocalDateTime mayoristaCambiadoEn) { this.mayoristaCambiadoEn = mayoristaCambiadoEn; }
     public String getMayoristaMotivo() { return mayoristaMotivo; }
     public void setMayoristaMotivo(String mayoristaMotivo) { this.mayoristaMotivo = mayoristaMotivo; }
+    public String getCanalHabitual() { return canalHabitual; }
+    public void setCanalHabitual(String canalHabitual) { this.canalHabitual = canalHabitual; }
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
     public UUID getFusionadoEnId() { return fusionadoEnId; }

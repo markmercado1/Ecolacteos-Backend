@@ -9,6 +9,7 @@ import com.planta.acopio.excel.FuentePaginada;
 import com.planta.acopio.excel.RespuestaExcel;
 import com.planta.acopio.service.AnalisisCalidadService;
 import com.planta.acopio.service.AnomaliaService;
+import com.planta.acopio.service.ClienteService;
 import com.planta.acopio.service.ConciliacionService;
 import com.planta.acopio.service.InformeProduccionDiarioService;
 import com.planta.acopio.service.InventarioInsumoService;
@@ -68,6 +69,7 @@ public class ExportacionController {
     private final AnalisisCalidadService analisisCalidadService;
     private final AnomaliaService anomaliaService;
     private final JornadaService jornadaService;
+    private final ClienteService clienteService;
 
     public ExportacionController(ExportacionExcelService excel, ProveedorService proveedorService,
                                  RegistroAcopioService registroAcopioService, PagoService pagoService,
@@ -76,7 +78,7 @@ public class ExportacionController {
                                  LoteProduccionService loteProduccionService, InformeProduccionDiarioService informeService,
                                  InventarioService inventarioService, InventarioInsumoService inventarioInsumoService,
                                  AnalisisCalidadService analisisCalidadService, AnomaliaService anomaliaService,
-                                 JornadaService jornadaService) {
+                                 JornadaService jornadaService, ClienteService clienteService) {
         this.excel = excel;
         this.proveedorService = proveedorService;
         this.registroAcopioService = registroAcopioService;
@@ -92,6 +94,7 @@ public class ExportacionController {
         this.analisisCalidadService = analisisCalidadService;
         this.anomaliaService = anomaliaService;
         this.jornadaService = jornadaService;
+        this.clienteService = clienteService;
     }
 
     // ------------------------------------------------------------------------------- fase 2 (prioritarias)
@@ -105,6 +108,18 @@ public class ExportacionController {
             @Parameter(description = "Nombre, DNI, RUC o razón social (contiene, sin distinguir mayúsculas ni acentos)") @RequestParam(required = false) String busqueda) {
         return RespuestaExcel.de(excel.exportar("proveedores", "Proveedores", ColumnasExportacion.PROVEEDORES,
                 pagina -> proveedorService.buscar(zonaId, activo, busqueda, pagina)));
+    }
+
+    @Operation(summary = "Exportar clientes", description = "Rol requerido: ADMIN (datos completos). Mismos filtros y búsqueda que GET /api/clientes.")
+    @GetMapping("/clientes")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Resource> clientes(
+            @Parameter(description = "Activos (true) o desactivados (false)") @RequestParam(required = false) Boolean activo,
+            @Parameter(description = "Solo mayoristas") @RequestParam(required = false) Boolean mayorista,
+            @Parameter(description = "Solo con autorización de promociones vigente") @RequestParam(required = false) Boolean conComunicaciones,
+            @Parameter(description = "Nombre, razón social, DNI, RUC o teléfono") @RequestParam(required = false) String busqueda) {
+        return RespuestaExcel.de(excel.exportar("clientes", "Clientes", ColumnasExportacion.CLIENTES,
+                FuentePaginada.deRespuesta(pagina -> clienteService.buscar(activo, mayorista, conComunicaciones, busqueda, pagina, true))));
     }
 
     @Operation(summary = "Exportar acopios", description = "Rol requerido: ACOPIADOR, ADMIN, CALIDAD o PRODUCCION. Mismos filtros que GET /api/registros-acopio/paginado. Una fila por entrega.")

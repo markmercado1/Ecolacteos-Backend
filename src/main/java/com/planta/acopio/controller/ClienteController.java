@@ -63,7 +63,8 @@ public class ClienteController {
     @Operation(summary = "Registrar un cliente (voluntario)", description = "Roles: ADMIN y VENTAS. Exige la autorización del comprador para el "
             + "registro (400 sin ella; la venta puede seguir como cliente varios). Nombre y teléfono obligatorios; correo, DNI y RUC opcionales. "
             + "La autorización de comunicaciones comerciales es aparte y opcional. 409 si el DNI/RUC ya es de otra ficha o de un proveedor, o si "
-            + "el teléfono ya figura en otras fichas y no se confirmó que es otra persona.")
+            + "el teléfono ya figura en otras fichas y no se confirmó que es otra persona. Tipo de cliente: `mayorista` = true solo ADMIN y con "
+            + "`motivoMayorista`. `canalHabitual` = PUBLICO (por defecto) o MAYORISTA (solo mayoristas); PROVEEDOR se rechaza.")
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','VENTAS')")
     public ResponseEntity<ClienteResponse> registrar(@RequestBody @Valid ClienteRequest dto, Authentication auth) {
@@ -76,7 +77,8 @@ public class ClienteController {
         return ResponseEntity.ok(service.obtener(id, esAdmin(auth)));
     }
 
-    @Operation(summary = "Editar datos del cliente", description = "Rol: ADMIN. Mismas reglas de documentos que al registrar.")
+    @Operation(summary = "Editar datos del cliente", description = "Rol: ADMIN. Mismas reglas de documentos que al registrar. `canalHabitual` "
+            + "opcional (null = no cambia).")
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClienteResponse> actualizar(@PathVariable UUID id, @RequestBody @Valid ClienteUpdateRequest dto) {
