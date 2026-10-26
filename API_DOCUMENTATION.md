@@ -454,6 +454,26 @@ ventas sin comprador en cualquier canal).
 - **`GET /api/catalogo/privacidad`** (público): textos del aviso para la reserva, el registro y las promociones; `completo=false` y `faltantes`
   mientras no se configuren los datos del responsable (`app.privacidad.*`, variables `PRIVACIDAD_*`). Ver `docs/CLIENTES.md` del panel.
 
+### 17.1 Refactor de clientes (V34): tipo, canal habitual, reservas en el padrón y Excel
+
+Migración `V34__cliente_canal_habitual.sql` (**aditiva**): `cliente.canal_habitual` (`PUBLICO` por defecto, o `MAYORISTA` solo si la ficha es
+mayorista; CHECK en la base). No cambia ventas ni reservas.
+
+- **Tipo y canal no son lo mismo:** el *tipo* (`mayorista`) habilita el precio MAYORISTA; el *canal habitual* es el que el panel **propone** al
+  vender. `POST /api/clientes` admite `mayorista?` (solo ADMIN; exige `motivoMayorista`; VENTAS → 400), `motivoMayorista?` y `canalHabitual?`
+  (`PUBLICO`|`MAYORISTA`; `PROVEEDOR` o un valor desconocido → 400; `MAYORISTA` sin ser mayorista → 400). `PUT /{id}` admite `canalHabitual?`
+  (null = no cambia). Quitar la condición de mayorista vuelve el canal a `PUBLICO`. Cada venta sigue validándose como antes.
+- `ClienteResponse` agrega `canalHabitual` y `reservas {pendientes, confirmadas, activas, total, proximoRetiro}`: solo reservas **vinculadas** a la
+  ficha, por **estado efectivo** (una vencida no cuenta como activa); calculado por página en una consulta. `CompradorSugerencia` agrega
+  `canalHabitual` (null para proveedores).
+- **`GET /api/exportaciones/clientes`** (ADMIN; datos completos): mismos filtros que `GET /api/clientes` (`activo`, `mayorista`,
+  `conComunicaciones`, `busqueda`). Columnas: cliente, tipo de persona, razón social, DNI, RUC, teléfonos, correo, tipo de cliente, canal habitual,
+  promociones, reservas activas, próximo retiro, registrado, activo.
+- **Importación `clientes`** (`/api/admin/importaciones/clientes/...`, ADMIN, infraestructura común): cada fila se crea con el mismo
+  `ClienteService.registrar` (mismas reglas y constancia). Teléfono y «Cómo autorizó el registro» obligatorios; promociones solo si la fila trae
+  medios; DNI/RUC de otra ficha o de un proveedor, teléfono ya usado (salvo «Mismo teléfono, otra persona» = Sí) o repetidos en el archivo →
+  DUPLICADA (se omite, **nunca se fusiona**); se revalida al confirmar.
+
 ---
 
 *Generado a partir del código real del backend (14 Controllers, 73 endpoints, 28 tests unitarios en verde). Cualquier cambio a los Controllers/DTOs se refleja automáticamente en Swagger UI la próxima vez que la aplicación arranca — este archivo es el que hay que actualizar a mano si cambian las reglas de integración de las secciones 6 y 7.*
