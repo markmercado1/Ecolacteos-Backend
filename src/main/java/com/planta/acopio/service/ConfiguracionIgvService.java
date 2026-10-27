@@ -2,6 +2,9 @@ package com.planta.acopio.service;
 
 import com.planta.acopio.dto.ConfiguracionIgvDtos.AfectacionIgvRequest;
 import com.planta.acopio.dto.ConfiguracionIgvDtos.AfectacionIgvResponse;
+import com.planta.acopio.dto.ConfiguracionIgvDtos.AfectacionLoteRequest;
+import com.planta.acopio.dto.ConfiguracionIgvDtos.AfectacionLoteResponse;
+import com.planta.acopio.dto.ConfiguracionIgvDtos.CambioCalculoResponse;
 import com.planta.acopio.dto.ConfiguracionIgvDtos.EstadoIgvResponse;
 import com.planta.acopio.dto.ConfiguracionIgvDtos.FilaAfectacionIgvResponse;
 import com.planta.acopio.dto.ConfiguracionIgvDtos.TasaIgvRequest;
@@ -9,6 +12,7 @@ import com.planta.acopio.dto.ConfiguracionIgvDtos.TasaIgvResponse;
 import com.planta.acopio.dto.PaginaResponse;
 import com.planta.acopio.entity.AfectacionIgv;
 import com.planta.acopio.entity.AfectacionIgvPresentacion;
+import com.planta.acopio.entity.CambioCalculoIgv;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.TasaIgv;
 import com.planta.acopio.entity.Usuario;
@@ -16,6 +20,7 @@ import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.AfectacionIgvRepository;
+import com.planta.acopio.repository.CambioCalculoIgvRepository;
 import com.planta.acopio.repository.PresentacionRepository;
 import com.planta.acopio.repository.TasaIgvRepository;
 import com.planta.acopio.repository.UsuarioRepository;
@@ -42,10 +47,11 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 
-// Fase G: IGV configurable en ventas. La configuracion (tasa con vigencia y afectacion por presentacion con vigencia) se
-// puede PREPARAR, pero ningun calculo se aplica mientras app.tributario.igv.calculo-habilitado sea false: es la decision del
-// usuario hasta que el contador confirme la afectacion de cada producto, la tasa y el redondeo. Con el calculo apagado las
-// ventas se registran exactamente como antes (sin foto tributaria) y el catalogo no muestra "Incluye IGV".
+// Fase G: IGV configurable en ventas. La configuracion (tasa con vigencia y afectacion por presentacion con vigencia) la decide
+// un ADMIN desde el panel, y el calculo general se ENCIENDE o APAGA tambien desde el panel (V35: cada cambio queda registrado con su
+// motivo, quien y cuando; el estado vigente es el mas reciente). Mientras nadie lo haya decidido rige app.tributario.igv.calculo-habilitado
+// (apagado por defecto). Con el calculo apagado las ventas se registran exactamente como antes (sin foto tributaria) y el catalogo no
+// muestra "Incluye IGV". Cambiar el interruptor NUNCA recalcula ventas ya registradas ni importes de reservas.
 //
 // Con el calculo encendido, una linea se desglosa solo si su presentacion tiene afectacion vigente a la FECHA DE LA VENTA
 // (GRAVADO con una tasa vigente a esa fecha, o EXONERADO/INAFECTO); en cualquier otro caso queda "sin determinar". Nunca se
@@ -59,30 +65,78 @@ public class ConfiguracionIgvService {
     private final AfectacionIgvRepository afectacionRepository;
     private final PresentacionRepository presentacionRepository;
     private final UsuarioRepository usuarioRepository;
-    private final boolean calculoHabilitado;
+    private final CambioCalculoIgvRepository cambioRepository;
+    private final boolean calculoPorDefecto;
     private final Clock reloj;
+
+    // Estado del interruptor leido de la BD (null = nadie lo decidio aun: rige el valor por defecto). Se refresca cada pocos segundos para
+    // que un cambio hecho en otra instancia tambien se note, y al instante en esta.
+    private static final long REFRESCO_NANOS = 15_000_000_000L;
+    private volatile Boolean decisionBd;
+    private volatile long leidoEn;
+    private volatile boolean leido;
 
     @Autowired
     public ConfiguracionIgvService(TasaIgvRepository tasaRepository, AfectacionIgvRepository afectacionRepository,
                                    PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
-                                   @Value("${app.tributario.igv.calculo-habilitado:false}") boolean calculoHabilitado) {
-        this(tasaRepository, afectacionRepository, presentacionRepository, usuarioRepository, calculoHabilitado,
+                                   CambioCalculoIgvRepository cambioRepository,
+                                   @Value("${app.tributario.igv.calculo-habilitado:false}") boolean calculoPorDefecto) {
+        this(tasaRepository, afectacionRepository, presentacionRepository, usuarioRepository, cambioRepository, calculoPorDefecto,
                 Clock.system(ZoneId.of("America/Lima")));
+    }
+
+    // Sin repositorio de cambios: solo rige el valor por defecto (pruebas unitarias del calculo).
+    ConfiguracionIgvService(TasaIgvRepository tasaRepository, AfectacionIgvRepository afectacionRepository,
+                            PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
+                            boolean calculoPorDefecto, Clock reloj) {
+        this(tasaRepository, afectacionRepository, presentacionRepository, usuarioRepository, null, calculoPorDefecto, reloj);
     }
 
     ConfiguracionIgvService(TasaIgvRepository tasaRepository, AfectacionIgvRepository afectacionRepository,
                             PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
-                            boolean calculoHabilitado, Clock reloj) {
+                            CambioCalculoIgvRepository cambioRepository, boolean calculoPorDefecto, Clock reloj) {
         this.tasaRepository = tasaRepository;
         this.afectacionRepository = afectacionRepository;
         this.presentacionRepository = presentacionRepository;
         this.usuarioRepository = usuarioRepository;
-        this.calculoHabilitado = calculoHabilitado;
+        this.cambioRepository = cambioRepository;
+        this.calculoPorDefecto = calculoPorDefecto;
         this.reloj = reloj;
     }
 
+    /** ¿Se desglosa el IGV en las ventas nuevas? Lo decide el ultimo cambio hecho desde el panel o, si no hay ninguno, el valor por defecto. */
     public boolean calculoHabilitado() {
-        return calculoHabilitado;
+        if (cambioRepository == null) return calculoPorDefecto;
+        if (!leido || System.nanoTime() - leidoEn > REFRESCO_NANOS) {
+            decisionBd = cambioRepository.findFirstByOrderByCreadoEnDescIdDesc().map(CambioCalculoIgv::isHabilitado).orElse(null);
+            leidoEn = System.nanoTime();
+            leido = true;
+        }
+        Boolean d = decisionBd;
+        return d != null ? d : calculoPorDefecto;
+    }
+
+    /**
+     * Enciende o apaga el calculo del IGV (ADMIN). Siempre con motivo; queda registrado. No recalcula ventas ya registradas ni reservas:
+     * solo cambia como se registran las ventas NUEVAS y si el catalogo muestra «Incluye IGV». Pedir el estado en el que ya esta es un 409.
+     */
+    @Transactional
+    public EstadoIgvResponse cambiarCalculo(boolean habilitado, String motivoTexto) {
+        String m = motivo(motivoTexto);
+        if (cambioRepository == null) throw new IllegalStateException("El cambio del calculo no esta disponible");
+        leido = false; // se vuelve a leer de la BD: otra instancia pudo cambiarlo hace un momento
+        if (calculoHabilitado() == habilitado) {
+            throw new ConflictoNegocioException("El cálculo del IGV ya está " + (habilitado ? "activado" : "desactivado") + ".");
+        }
+        CambioCalculoIgv c = new CambioCalculoIgv();
+        c.setHabilitado(habilitado);
+        c.setMotivo(m);
+        c.setUsuario(usuarioActual());
+        cambioRepository.save(c);
+        decisionBd = habilitado;
+        leidoEn = System.nanoTime();
+        leido = true;
+        return estado();
     }
 
     // ------------------------------------------------------------------ calculo (ventas y catalogo)
@@ -92,7 +146,7 @@ public class ConfiguracionIgvService {
      * sin tasa vigente a la fecha). `subtotal` es lo que se cobra: el IGV se desglosa dentro de el.
      */
     public CalculoIgv.Desglose desglosar(UUID presentacionId, LocalDate fecha, BigDecimal subtotal) {
-        if (!calculoHabilitado) return null;
+        if (!calculoHabilitado()) return null;
         AfectacionIgv afectacion = afectacionRepository
                 .findFirstByPresentacionIdAndVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(presentacionId, fecha)
                 .map(AfectacionIgvPresentacion::getAfectacion).orElse(AfectacionIgv.SIN_DEFINIR);
@@ -106,7 +160,7 @@ public class ConfiguracionIgvService {
 
     /** De estas presentaciones, las que a esa fecha se venden gravadas con una tasa vigente ("Incluye IGV"). Vacio si el calculo esta apagado. */
     public Set<UUID> gravadasConTasa(Collection<UUID> presentacionIds, LocalDate fecha) {
-        if (!calculoHabilitado || presentacionIds.isEmpty()) return Set.of();
+        if (!calculoHabilitado() || presentacionIds.isEmpty()) return Set.of();
         if (tasaRepository.findFirstByVigenteDesdeLessThanEqualOrderByVigenteDesdeDesc(fecha).isEmpty()) return Set.of();
         Set<UUID> gravadas = new HashSet<>();
         porPresentacion(afectacionRepository.findByPresentacionIdIn(presentacionIds)).forEach((id, serie) -> {
@@ -137,10 +191,11 @@ public class ConfiguracionIgvService {
         }
         long sinDefinir = activas.size() - gravadas - exoneradas - inafectas;
 
+        boolean calculoHabilitado = calculoHabilitado();
         List<String> avisos = new ArrayList<>();
         if (!calculoHabilitado) {
-            avisos.add("Configuración tributaria pendiente de la confirmación del contador: el cálculo del IGV está desactivado y las ventas "
-                    + "se registran como hasta ahora, sin desglose.");
+            avisos.add("El cálculo del IGV está desactivado: las ventas se registran como hasta ahora, sin desglose. Un administrador puede "
+                    + "activarlo desde esta pantalla cuando lo decida.");
         }
         if (vigente == null) {
             avisos.add(programada == null ? "No hay una tasa de IGV registrada." : "La tasa de IGV registrada todavía no está vigente.");
@@ -152,8 +207,11 @@ public class ConfiguracionIgvService {
         if (gravadas > 0 && vigente == null) {
             avisos.add("Hay presentaciones gravadas pero ninguna tasa vigente: sus ventas quedarían «sin determinar».");
         }
+        CambioCalculoResponse ultimo = cambioRepository == null ? null : cambioRepository.findFirstByOrderByCreadoEnDescIdDesc()
+                .map(c -> new CambioCalculoResponse(c.isHabilitado(), c.getMotivo(), c.getUsuario() != null ? c.getUsuario().getNombre() : null,
+                        c.getCreadoEn())).orElse(null);
         return new EstadoIgvResponse(calculoHabilitado, calculoHabilitado ? "ACTIVO" : "PENDIENTE", vigente, programada,
-                activas.size(), sinDefinir, gravadas, exoneradas, inafectas, avisos);
+                activas.size(), sinDefinir, gravadas, exoneradas, inafectas, avisos, ultimo);
     }
 
     public List<TasaIgvResponse> listarTasas() {
@@ -230,6 +288,50 @@ public class ConfiguracionIgvService {
         a.setMotivo(motivo(dto.motivo()));
         a.setUsuario(usuarioActual());
         return toResponse(afectacionRepository.save(a));
+    }
+
+    /**
+     * Clasifica de una vez las presentaciones activas. Por defecto solo las que no tienen afectacion definida a esa fecha (nunca pisa una
+     * decision ya tomada); con soloSinDefinir=false tambien cambia las ya clasificadas. Una presentacion que ya tiene un registro con
+     * esa misma fecha se omite. Cada una queda con su propio registro, que se puede corregir despues una a una.
+     */
+    @Transactional
+    public AfectacionLoteResponse registrarAfectacionEnLote(AfectacionLoteRequest dto) {
+        AfectacionIgv afectacion;
+        try {
+            afectacion = AfectacionIgv.valueOf(dto.afectacion().trim().toUpperCase());
+        } catch (IllegalArgumentException e) {
+            throw new ValidacionNegocioException("Afectación no válida: «" + dto.afectacion() + "». Usa GRAVADO, EXONERADO o INAFECTO.");
+        }
+        if (afectacion == AfectacionIgv.SIN_DEFINIR) {
+            throw new ValidacionNegocioException("Para clasificar en lote usa GRAVADO, EXONERADO o INAFECTO.");
+        }
+        String m = motivo(dto.motivo());
+        boolean soloSinDefinir = dto.soloSinDefinir() == null || dto.soloSinDefinir();
+        Usuario usuario = usuarioActual();
+        List<UUID> activas = presentacionRepository.idsActivas();
+        Map<UUID, List<AfectacionIgvPresentacion>> series = activas.isEmpty() ? Map.of() : porPresentacion(afectacionRepository.findByPresentacionIdIn(activas));
+        int aplicadas = 0;
+        int omitidas = 0;
+        for (UUID id : activas) {
+            List<AfectacionIgvPresentacion> serie = series.getOrDefault(id, List.of());
+            AfectacionIgvPresentacion vigente = vigenteA(serie, dto.vigenteDesde());
+            boolean definida = vigente != null && vigente.getAfectacion() != AfectacionIgv.SIN_DEFINIR;
+            boolean mismaFecha = serie.stream().anyMatch(a -> a.getVigenteDesde().equals(dto.vigenteDesde()));
+            if ((soloSinDefinir && definida) || mismaFecha || (vigente != null && vigente.getAfectacion() == afectacion)) {
+                omitidas++;
+                continue;
+            }
+            AfectacionIgvPresentacion a = new AfectacionIgvPresentacion();
+            a.setPresentacion(presentacionRepository.getReferenceById(id));
+            a.setAfectacion(afectacion);
+            a.setVigenteDesde(dto.vigenteDesde());
+            a.setMotivo(m);
+            a.setUsuario(usuario);
+            afectacionRepository.save(a);
+            aplicadas++;
+        }
+        return new AfectacionLoteResponse(aplicadas, omitidas);
     }
 
     // ------------------------------------------------------------------ auxiliares

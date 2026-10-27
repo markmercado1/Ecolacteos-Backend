@@ -409,8 +409,8 @@ Migración `V31__documentos_proveedor.sql` (**aditiva, no modifica ningún valor
 Migración `V32__igv_configurable.sql` (**aditiva y neutra**: no inserta tasas ni clasifica productos; no toca precios, ventas ni reservas). **Los precios son finales** (lo publicado es lo que paga
 el cliente): el IGV **nunca se suma**; cuando corresponde se **desglosa dentro** del precio.
 
-- **Cálculo APAGADO por defecto**: `app.tributario.igv.calculo-habilitado` (`TRIBUTARIO_IGV_CALCULO_HABILITADO`, `false`). Es la decisión del usuario mientras el **contador** no confirme la afectación
-  de cada producto, la tasa y el redondeo. Apagado ⇒ las ventas se registran **exactamente como antes** (sin foto tributaria), el catálogo no dice «Incluye IGV» y el estado es **PENDIENTE**,
+- **Cálculo APAGADO por defecto** y **encendible desde el panel** (V35, ver abajo): `app.tributario.igv.calculo-habilitado` (`TRIBUTARIO_IGV_CALCULO_HABILITADO`, `false`) solo es el valor inicial
+  mientras nadie haya decidido. Apagado ⇒ las ventas se registran **exactamente como antes** (sin foto tributaria), el catálogo no dice «Incluye IGV» y el estado es **PENDIENTE**,
   aunque la configuración esté preparada.
 - **Configuración (ADMIN, `/api/admin/tributario`, exclusiva de la web):** `GET /estado` (calculoHabilitado, `PENDIENTE`|`ACTIVO`, tasa vigente y programada, presentaciones activas por afectación,
   avisos); `GET|POST /tasas-igv` (`{tasa, vigenteDesde, motivo}`; 0 < tasa < 100, hasta 2 decimales; una fecha por tasa, 409); `GET /afectaciones?busqueda&page&size` (presentaciones activas con su
@@ -424,6 +424,21 @@ el cliente): el IGV **nunca se suma**; cuando corresponde se **desglosa dentro**
   gravada con tasa vigente, con el cálculo encendido y con precio). La exportación de ventas agrega «Afectación IGV», «Valor de venta» e «IGV incluido».
 - **Contrato móvil sin cambios** (`VentaRequest`/`VentaResponse`).
 - **Fuera de alcance:** clientes identificados en ventas, facturación electrónica, detracciones, retenciones y cualquier cambio en pagos a proveedores.
+
+### 16.1 Interruptor del IGV desde el panel (V35)
+
+Migración `V35__igv_calculo_activable.sql` (**aditiva**: una tabla nueva, `cambio_calculo_igv`, append-only; nace vacía). Quien administra decide cuándo se calcula el IGV; no hace falta tocar
+variables de entorno ni reiniciar.
+
+- `PUT /api/admin/tributario/calculo` (ADMIN) `{habilitado, motivo}` → `EstadoIgvResponse`. El **motivo es obligatorio** (también lo exige la base); pedir el estado en el que ya está ⇒ **409**.
+  Cada cambio guarda quién, cuándo y por qué; el estado vigente es el **último** cambio y, si nunca hubo uno, el valor por defecto de la propiedad (apagado). El resultado se aplica de inmediato en
+  este servidor (y como mucho tras 15 s en otro).
+- `GET /estado` agrega `ultimoCambio` = `{habilitado, motivo, usuarioNombre, creadoEn}` o `null`. Con el cálculo apagado el aviso dice que un administrador puede activarlo desde la pantalla.
+- `POST /api/admin/tributario/afectaciones/lote` (ADMIN) `{afectacion: GRAVADO|EXONERADO|INAFECTO, vigenteDesde, motivo, soloSinDefinir?}` → `{aplicadas, omitidas}`. Clasifica de una vez las
+  presentaciones **activas**; por defecto (`soloSinDefinir` verdadero) solo las que no tienen afectación a esa fecha, y **nunca pisa** una decisión de la misma fecha ni repite la que ya rige. Cada
+  presentación recibe su propio registro (se puede cambiar después una a una). `SIN_DEFINIR` no es una clasificación válida en lote.
+- **Qué cambia al encender:** solo las **ventas nuevas** (precio final sin variar; el IGV sale por `precio × tasa / (100 + tasa)`, p. ej. 118,00 ⇒ 18,00). Encender o apagar **no recalcula** ventas
+  ni reservas ya registradas. Lo que quede sin afectación (o sin tasa vigente) se vende **sin determinar**; el panel lo avisa antes de activar.
 
 ## 17. Clientes, comprador de cada venta e historial de compras (Fase H, V33)
 

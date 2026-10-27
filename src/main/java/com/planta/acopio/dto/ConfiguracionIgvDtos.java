@@ -38,5 +38,18 @@ public final class ConfiguracionIgvDtos {
      */
     public record EstadoIgvResponse(boolean calculoHabilitado, String estado, TasaIgvResponse tasaVigente, TasaIgvResponse tasaProgramada,
                                     long presentacionesActivas, long sinDefinir, long gravadas, long exoneradas, long inafectas,
-                                    List<String> avisos) {}
+                                    List<String> avisos, CambioCalculoResponse ultimoCambio) {}
+
+    /** Interruptor general del calculo (solo ADMIN): activar o desactivar, siempre con motivo. No recalcula ventas ya registradas. */
+    public record CambioCalculoRequest(@NotNull Boolean habilitado, @NotBlank String motivo) {}
+
+    public record CambioCalculoResponse(boolean habilitado, String motivo, String usuarioNombre, LocalDateTime creadoEn) {}
+
+    /**
+     * Clasifica de una vez las presentaciones ACTIVAS (por defecto solo las que no tienen afectacion definida a esa fecha). afectacion:
+     * GRAVADO, EXONERADO o INAFECTO. Cada presentacion queda con su propio registro (con la misma fecha y motivo) y se puede cambiar despues una a una.
+     */
+    public record AfectacionLoteRequest(@NotBlank String afectacion, @NotNull LocalDate vigenteDesde, @NotBlank String motivo, Boolean soloSinDefinir) {}
+
+    public record AfectacionLoteResponse(int aplicadas, int omitidas) {}
 }

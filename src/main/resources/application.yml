@@ -111,9 +111,9 @@ app:
     plazo-reservas: ${PRIVACIDAD_PLAZO_RESERVAS:}
     plazo-clientes: ${PRIVACIDAD_PLAZO_CLIENTES:}
 
-  # Fase G (IGV configurable en ventas). Los precios son FINALES (incluyen el IGV): nunca se suma, solo se desglosa. El calculo
-  # esta APAGADO por defecto hasta que el contador confirme la afectacion de cada producto, la tasa y el redondeo; mientras
-  # tanto la configuracion (tasa con vigencia, afectacion por presentacion) se puede preparar en el panel sin efecto alguno.
+  # Fase G (IGV configurable en ventas). Los precios son FINALES (incluyen el IGV): nunca se suma, solo se desglosa. El calculo se
+  # enciende o apaga DESDE EL PANEL (ADMIN, con motivo; V35) y rige el ultimo cambio. Este valor solo manda mientras nadie lo haya
+  # decidido en el panel (apagado por defecto): la configuracion (tasa con vigencia, afectacion por presentacion) se puede preparar sin efecto.
   tributario:
     igv:
       calculo-habilitado: ${TRIBUTARIO_IGV_CALCULO_HABILITADO:false}
