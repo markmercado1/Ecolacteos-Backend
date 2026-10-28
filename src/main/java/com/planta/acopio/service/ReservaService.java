@@ -84,13 +84,15 @@ public class ReservaService {
     private final ReglaVencimiento regla;
 
     private final CompradorService compradorService;
+    private final TipoPrecioService tipoPrecioService;
 
     public ReservaService(ReservaRepository reservaRepository, ReservaDetalleRepository detalleRepository,
                           ReservaEventoRepository eventoRepository, PresentacionRepository presentacionRepository,
                           PrecioQuesoRepository precioRepository, UsuarioRepository usuarioRepository,
                           InventarioService inventarioService, ReservaCompromisos compromisos, ReservaConfig config,
-                          ReglaVencimiento regla, CompradorService compradorService) {
+                          ReglaVencimiento regla, CompradorService compradorService, TipoPrecioService tipoPrecioService) {
         this.compradorService = compradorService;
+        this.tipoPrecioService = tipoPrecioService;
         this.reservaRepository = reservaRepository;
         this.detalleRepository = detalleRepository;
         this.eventoRepository = eventoRepository;
@@ -114,6 +116,7 @@ public class ReservaService {
 
     @Transactional
     public ReservaPublicaResponse crear(CrearReservaRequest dto) {
+        tipoPrecioService.exigirActivo(TipoClienteVenta.PUBLICO); // una reserva nueva usa el precio publico; las ya confirmadas se retiran igual
         ReservaParametros p = config.actuales();
         LocalDateTime ahora = regla.ahora();
         LocalDate hoy = ahora.toLocalDate();

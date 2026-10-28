@@ -141,7 +141,8 @@ public class VentaService {
         }
 
         TipoClienteVenta modalidad = TipoClienteVenta.valueOf(tipoClienteStr);
-        tipoPrecioService.exigirActivo(modalidad); // un tipo desactivado no vende; el reintento idempotente de arriba ya devolvio lo registrado
+        // un tipo desactivado no vende; el reintento idempotente de arriba ya devolvio lo registrado y el retiro de una reserva ya confirmada se honra
+        if (reservaId == null) tipoPrecioService.exigirActivo(modalidad);
 
         // Fase 4: retiro de una reserva. La reserva se bloquea y se pasa a RETIRADA ANTES de validar el stock: asi sus
         // unidades dejan de estar comprometidas y la venta solo se evalua contra las DEMAS reservas. Si algo falla mas

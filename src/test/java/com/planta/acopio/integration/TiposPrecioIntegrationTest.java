@@ -127,11 +127,10 @@ class TiposPrecioIntegrationTest {
     }
 
     @Test
-    void protegeAPublicoExigeMotivoRechazaRepetirYSoloAdminCambia() throws Exception {
+    void exigeMotivoRechazaRepetirNoDejaSinTiposYSoloAdminCambia() throws Exception {
         String admin = token("admin@planta.com", "Admin1234");
         String ventas = tokenDeRol("VENTAS");
 
-        cambiar(admin, "PUBLICO", false, "Intento", 400);                  // el catalogo publico y las reservas dependen de PUBLICO
         cambiar(admin, "MAYORISTA", true, "Ya estaba activo", 409);        // repetir el estado
         cambiar(admin, "MAYORISTA", false, "   ", 400);                    // motivo obligatorio
         cambiar(admin, "INEXISTENTE", false, "No existe", 404);
@@ -139,6 +138,22 @@ class TiposPrecioIntegrationTest {
         mvc.perform(get("/api/tipos-precio?soloActivos=true").header("Authorization", ventas)).andExpect(status().isOk());   // VENTAS si consulta
         assertThat(codigos(listar(admin, false))).containsExactly("MAYORISTA", "PROVEEDOR", "PUBLICO");
         assertThat(jdbc.queryForObject("select count(*) from tipo_precio where activo", Integer.class)).isEqualTo(3);
+    }
+
+    @Test
+    void publicoSeDesactivaComoCualquierOtroPeroNuncaElUltimoYLasVentasNuevasLoRechazan() throws Exception {
+        String admin = token("admin@planta.com", "Admin1234");
+        Presentacion p = presentacionConStock(20);
+        cambiar(admin, "PUBLICO", false, "Solo vendemos por canales directos", 200);
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("admin@planta.com", null));
+        assertThatThrownBy(() -> ventaService.registrarCarritoOIgnorarSiDuplicado(new CrearVentaCarritoRequest(UUID.randomUUID().toString(), hoy,
+                "PUBLICO", List.of(new DetalleVentaRequest(p.getId(), 1)))))
+                .isInstanceOf(ValidacionNegocioException.class).hasMessageContaining("desactivado");
+        SecurityContextHolder.clearContext();
+        cambiar(admin, "MAYORISTA", false, "Prueba", 200);
+        cambiar(admin, "PROVEEDOR", false, "No puede quedar sin ninguno", 400);   // seria el ultimo activo... si, el unico que queda es PROVEEDOR
+        cambiar(admin, "PUBLICO", true, "Se reabre", 200);
+        cambiar(admin, "MAYORISTA", true, "Se reabre", 200);
     }
 
     private List<String> codigos(JsonNode lista) {

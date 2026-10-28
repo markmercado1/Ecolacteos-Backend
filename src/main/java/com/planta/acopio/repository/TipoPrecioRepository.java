@@ -8,4 +8,6 @@ import java.util.List;
 public interface TipoPrecioRepository extends JpaRepository<TipoPrecio, String> {
 
     List<TipoPrecio> findAllByOrderByCodigoAsc();
+
+    long countByActivoTrue();
 }

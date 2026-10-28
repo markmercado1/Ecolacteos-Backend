@@ -41,6 +41,14 @@ class MigracionTipoPrecioIntegrationTest {
             assertThatThrownBy(() -> st.execute("INSERT INTO cambio_tipo_precio (codigo, activo, motivo) VALUES ('MAYORISTA', false, '  ')")).isInstanceOf(SQLException.class);
             st.execute("INSERT INTO cambio_tipo_precio (codigo, activo, motivo) VALUES ('MAYORISTA', false, 'Prueba')");
         }
+
+        // V38: PUBLICO deja de estar protegido y se puede desactivar; lo demas no cambia
+        Flyway.configure().dataSource(base[0], base[1], base[2]).locations("classpath:db/migration").target("38").load().migrate();
+        try (Connection c = DriverManager.getConnection(base[0], base[1], base[2]); Statement st = c.createStatement()) {
+            assertThat(huella(st)).isEqualTo(antes);
+            assertThat(escalar(st, "SELECT protegido FROM tipo_precio WHERE codigo = 'PUBLICO'")).isEqualTo("f");
+            st.execute("UPDATE tipo_precio SET activo = false WHERE codigo = 'PUBLICO'");
+        }
     }
 
     private static String escalar(Statement st, String sql) throws SQLException {

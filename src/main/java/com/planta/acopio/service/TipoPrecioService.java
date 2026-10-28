@@ -20,7 +20,7 @@ import org.springframework.transaction.annotation.Transactional;
 import java.util.List;
 
 // Tipos de precio administrables, etapa 1: activar o desactivar MAYORISTA, PROVEEDOR y PUBLICO. Un tipo desactivado no se acepta en precios
-// ni ventas NUEVOS; lo ya registrado no cambia y se sigue mostrando con su nombre. PUBLICO esta protegido (catalogo publico y reservas).
+// ni ventas NUEVOS; lo ya registrado no cambia y se sigue mostrando con su nombre. Ningun tipo esta protegido: solo se impide desactivar el ultimo.
 @Service
 public class TipoPrecioService {
 
@@ -48,8 +48,8 @@ public class TipoPrecioService {
         if (m.isEmpty()) throw new ValidacionNegocioException("El motivo es obligatorio.");
         TipoPrecio tipo = repository.findById(codigo == null ? "" : codigo.trim().toUpperCase())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Tipo de precio no encontrado: " + codigo));
-        if (!activo && tipo.isProtegido()) {
-            throw new ValidacionNegocioException("El tipo " + tipo.getNombre() + " no se puede desactivar: el catálogo público y las reservas dependen de él.");
+        if (!activo && tipo.isActivo() && repository.countByActivoTrue() <= 1) {
+            throw new ValidacionNegocioException("No se puede desactivar el último tipo de precio activo: no quedaría ninguno para vender.");
         }
         if (tipo.isActivo() == activo) {
             throw new ConflictoNegocioException("El tipo " + tipo.getNombre() + " ya está " + (activo ? "activo" : "desactivado") + ".");
