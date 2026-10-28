@@ -6,7 +6,6 @@ import com.planta.acopio.entity.Familia;
 import com.planta.acopio.entity.PrecioQueso;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Producto;
-import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.repository.FamiliaRepository;
 import com.planta.acopio.repository.PrecioQuesoRepository;
 import com.planta.acopio.repository.PresentacionRepository;
@@ -44,7 +43,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class PreciosPorPresentacionPaginadoIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+    static PostgreSQLContainer<?> postgres = PostgresDePrueba.contenedor()
             .withDatabaseName("acopio_lechero_test")
             .withUsername("acopio")
             .withPassword("acopio");
@@ -86,8 +85,8 @@ class PreciosPorPresentacionPaginadoIntegrationTest {
         frascoYogurt = presentacionRepository.save(presentacionCon("Frasco 1 L" + sufijo, yogurtFresa));
         // quesoAndino se queda sin ninguna presentacion a proposito.
 
-        precioQuesoRepository.save(precioCon(botella1L, TipoClienteVenta.PUBLICO, "12.00", LocalDate.now().minusDays(10)));
-        precioQuesoRepository.save(precioCon(frascoYogurt, TipoClienteVenta.MAYORISTA, "5.50", LocalDate.now().plusDays(30)));
+        precioQuesoRepository.save(precioCon(botella1L, "PUBLICO", "12.00", LocalDate.now().minusDays(10)));
+        precioQuesoRepository.save(precioCon(frascoYogurt, "MAYORISTA", "5.50", LocalDate.now().plusDays(30)));
         // bolsa500g se queda sin ningun precio configurado a proposito.
     }
 
@@ -236,7 +235,7 @@ class PreciosPorPresentacionPaginadoIntegrationTest {
         return p;
     }
 
-    private PrecioQueso precioCon(Presentacion presentacion, TipoClienteVenta modalidad, String precio, LocalDate vigenteDesde) {
+    private PrecioQueso precioCon(Presentacion presentacion, String modalidad, String precio, LocalDate vigenteDesde) {
         PrecioQueso p = new PrecioQueso();
         p.setPresentacion(presentacion);
         p.setModalidad(modalidad);

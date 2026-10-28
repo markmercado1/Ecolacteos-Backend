@@ -31,9 +31,8 @@ public class Venta {
     @Column(nullable = false)
     private LocalDate fecha;
 
-    @Enumerated(EnumType.STRING)
     @Column(name = "tipo_cliente", nullable = false, length = 15)
-    private TipoClienteVenta tipoCliente;
+    private String tipoCliente;
 
     // Suma de los subtotales de cada VentaDetalle, fijada por VentaService al confirmar la venta (ver
     // comentario de clase). Nunca se recalcula despues (append-only, igual que el resto del libro mayor).
@@ -85,8 +84,8 @@ public class Venta {
     public void setUuidCliente(String uuidCliente) { this.uuidCliente = uuidCliente; }
     public LocalDate getFecha() { return fecha; }
     public void setFecha(LocalDate fecha) { this.fecha = fecha; }
-    public TipoClienteVenta getTipoCliente() { return tipoCliente; }
-    public void setTipoCliente(TipoClienteVenta tipoCliente) { this.tipoCliente = tipoCliente; }
+    public String getTipoCliente() { return tipoCliente; }
+    public void setTipoCliente(String tipoCliente) { this.tipoCliente = tipoCliente; }
     public BigDecimal getTotal() { return total; }
     public void setTotal(BigDecimal total) { this.total = total; }
     public Usuario getVendedor() { return vendedor; }

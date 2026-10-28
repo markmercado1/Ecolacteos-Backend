@@ -77,6 +77,9 @@ public final class ClienteDtos {
 
     public record MayoristaRequest(boolean mayorista, @NotBlank String motivo) {}
 
+    /** Habilitar o quitar a un cliente para un tipo de precio con regla CLIENTE_HABILITADO (solo ADMIN, con motivo). */
+    public record HabilitacionTipoRequest(boolean habilitado, @NotBlank String motivo) {}
+
     /** Otorgar o revocar la autorizacion comercial. Revocar no necesita medios ni motivo. */
     public record ComercialRequest(boolean otorgada, List<String> medios, @NotBlank String forma, String avisoVersion, String nota) {}
 
@@ -97,7 +100,7 @@ public final class ClienteDtos {
         String ruc,
         String correo,
         List<String> telefonos,
-        boolean mayorista,
+        boolean mayorista,          // compatibilidad: habilitado para el tipo MAYORISTA (la fuente es tiposHabilitados)
         boolean activo,
         UUID fusionadoEnId,
         LocalDateTime creadoEn,
@@ -105,7 +108,8 @@ public final class ClienteDtos {
         EstadoAutorizacion registro,
         EstadoAutorizacion comunicaciones,
         String canalHabitual,
-        ResumenReservas reservas
+        ResumenReservas reservas,
+        List<String> tiposHabilitados   // tipos de precio (regla CLIENTE_HABILITADO) para los que la ficha esta habilitada
     ) {}
 
     public record ConsentimientoResponse(String finalidad, String estado, List<String> medios, String forma, String avisoVersion,
@@ -125,7 +129,7 @@ public final class ClienteDtos {
      * comprador, puede ser otra persona) o NOMBRE. Telefono y documento siempre enmascarados.
      */
     public record CompradorSugerencia(String tipo, UUID id, String nombre, String telefono, String documento, boolean mayorista,
-                                      boolean activo, String coincidencia, String canalHabitual) {}
+                                      boolean activo, String coincidencia, String canalHabitual, List<String> tiposHabilitados) {}
 
     public record LineaCompra(String producto, String presentacion, int cantidad, BigDecimal subtotal) {}
 

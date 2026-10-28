@@ -106,7 +106,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 class ReservaIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+    static PostgreSQLContainer<?> postgres = PostgresDePrueba.contenedor()
             .withDatabaseName("acopio_lechero_test")
             .withUsername("acopio")
             .withPassword("acopio");
@@ -974,6 +974,28 @@ class ReservaIntegrationTest {
     }
 
     // ================================================================== 15. retiro con venta real
+
+    @Test
+    void unaReservaYaConfirmadaSeRetiraAunqueElTipoPublicoEsteDesactivadoYUnaReservaNuevaSeRechaza() {
+        Presentacion pr = presentacionControlada("unidad", "15.00");
+        producir(pr, 10, hoy.plusDays(10));
+        ReservaPublicaResponse confirmada = confirmada(telefonoNuevo(), hoy.plusDays(1), pr, 4);
+        UUID id = idDe(confirmada);
+        jdbc.update("UPDATE tipo_precio SET activo = FALSE WHERE codigo = 'PUBLICO'");   // el administrador lo desactiva (hay otros tipos activos)
+        try {
+            // lo NUEVO se rechaza: una reserva nueva usa el precio publico
+            org.assertj.core.api.Assertions.assertThatThrownBy(() -> reservar(telefonoNuevo(), hoy.plusDays(2), pr, 1))
+                    .isInstanceOf(com.planta.acopio.exception.ValidacionNegocioException.class).hasMessageContaining("desactivado");
+            // lo ya confirmado se honra: el retiro es una venta real al precio de la reserva
+            VentaResumenResponse venta = ventaService.registrarRetiroDeReserva(id, UUID.randomUUID().toString(), hoy);
+            assertThat(venta.tipoCliente()).isEqualTo("PUBLICO");
+            assertThat(venta.total()).isEqualByComparingTo("60.00");
+            assertThat(reservaService.obtener(id).estado()).isEqualTo(EstadoReserva.RETIRADA);
+            assertThat(reservaService.obtener(id).ventaId()).isEqualTo(venta.id());
+        } finally {
+            jdbc.update("UPDATE tipo_precio SET activo = TRUE WHERE codigo = 'PUBLICO'");
+        }
+    }
 
     @Test
     void elRetiroEsUnaVentaRealPorElFlujoNormalConFefoYKardexYMarcaLaReservaEnLaMismaTransaccion() {

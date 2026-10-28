@@ -11,7 +11,6 @@ import com.planta.acopio.service.AnalisisCalidadService;
 import com.planta.acopio.service.AnomaliaService;
 import com.planta.acopio.service.ClienteService;
 import com.planta.acopio.service.ConciliacionService;
-import com.planta.acopio.service.InformeProduccionDiarioService;
 import com.planta.acopio.service.InventarioInsumoService;
 import com.planta.acopio.service.InventarioService;
 import com.planta.acopio.service.JornadaService;
@@ -63,7 +62,6 @@ public class ExportacionController {
     private final ConciliacionService conciliacionService;
     private final UnidadService unidadService;
     private final LoteProduccionService loteProduccionService;
-    private final InformeProduccionDiarioService informeService;
     private final InventarioService inventarioService;
     private final InventarioInsumoService inventarioInsumoService;
     private final AnalisisCalidadService analisisCalidadService;
@@ -75,7 +73,7 @@ public class ExportacionController {
                                  RegistroAcopioService registroAcopioService, PagoService pagoService,
                                  VentaService ventaService, ReservaService reservaService,
                                  ConciliacionService conciliacionService, UnidadService unidadService,
-                                 LoteProduccionService loteProduccionService, InformeProduccionDiarioService informeService,
+                                 LoteProduccionService loteProduccionService,
                                  InventarioService inventarioService, InventarioInsumoService inventarioInsumoService,
                                  AnalisisCalidadService analisisCalidadService, AnomaliaService anomaliaService,
                                  JornadaService jornadaService, ClienteService clienteService) {
@@ -88,7 +86,6 @@ public class ExportacionController {
         this.conciliacionService = conciliacionService;
         this.unidadService = unidadService;
         this.loteProduccionService = loteProduccionService;
-        this.informeService = informeService;
         this.inventarioService = inventarioService;
         this.inventarioInsumoService = inventarioInsumoService;
         this.analisisCalidadService = analisisCalidadService;
@@ -195,17 +192,6 @@ public class ExportacionController {
             @Parameter(description = "Producto o responsable") @RequestParam(required = false) String busqueda) {
         return RespuestaExcel.de(excel.exportar("lotes-produccion", "Lotes", ColumnasExportacion.LOTES,
                 pagina -> loteProduccionService.buscar(fecha, productoId, estado, busqueda, pagina)));
-    }
-
-    @Operation(summary = "Exportar informes de producción diaria", description = "Rol requerido: PRODUCCION o ADMIN. Mismos filtros que GET /api/informes-produccion.")
-    @GetMapping("/informes-produccion")
-    @PreAuthorize("hasAnyRole('PRODUCCION','ADMIN')")
-    public ResponseEntity<Resource> informesProduccion(
-            @Parameter(description = "Desde esta fecha (inclusive)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
-            @Parameter(description = "Hasta esta fecha (inclusive)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
-            @Parameter(description = "Responsable") @RequestParam(required = false) String busqueda) {
-        return RespuestaExcel.de(excel.exportar("informes-produccion", "Producción diaria", ColumnasExportacion.INFORMES_PRODUCCION,
-                pagina -> informeService.buscar(desde, hasta, busqueda, pagina)));
     }
 
     @Operation(summary = "Exportar el stock de producto terminado", description = "Rol requerido: PRODUCCION, VENTAS o ADMIN. Mismos filtros que GET /api/inventario/stock/presentaciones.")

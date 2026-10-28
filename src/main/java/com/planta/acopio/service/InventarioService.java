@@ -1,5 +1,7 @@
 package com.planta.acopio.service;
 
+import com.planta.acopio.entity.SalidaInventario;
+import com.planta.acopio.entity.MotivoSalida;
 import com.planta.acopio.dto.ExistenciasPresentacionResponse;
 import com.planta.acopio.dto.FilaStockResponse;
 import com.planta.acopio.dto.LoteExistenciaResponse;
@@ -245,6 +247,49 @@ public class InventarioService {
         e.lotes().stream().filter(l -> !l.vencido()).map(InventarioService::cupoDe).forEach(orden::add);
         repartirSalida(movimiento, orden, -delta);
         registrarIncidenciaSiQuedaronReservasSinCobertura(ajuste, presentacionId);
+    }
+
+    /** Retiro explícito: la transacción y el bloqueo de presentación pertenecen a SalidaInventarioService. */
+    public UUID registrarRetiro(SalidaInventario salida) {
+        UUID id = salida.getPresentacion().getId();
+        int cantidad;
+        try { cantidad = salida.getCantidad().intValueExact(); }
+        catch (ArithmeticException ex) { throw new ValidacionNegocioException("Las unidades de producto deben ser enteras."); }
+        List<Cupo> cupos = new ArrayList<>();
+        if (controlaVencimiento(id)) {
+            Existencias e = calcularExistencias(id);
+            if (salida.getLoteId() == null) {
+                throw new ValidacionNegocioException("Selecciona el lote del que se retiran las unidades.");
+            }
+            Existencias.Lote lote = e.lotes().stream()
+                    .filter(l -> l.id().equals(salida.getLoteId()) && l.origen().name().equals(salida.getOrigenLote()))
+                    .findFirst().orElseThrow(() -> new ValidacionNegocioException("El lote no pertenece a esta presentación o ya no tiene saldo."));
+            if (cantidad > lote.saldo()) throw new ValidacionNegocioException("La salida supera las unidades disponibles del lote.");
+            if (salida.getTipo() == MotivoSalida.VENCIMIENTO && !lote.vencido()) {
+                throw new ValidacionNegocioException("El lote todavía no está vencido.");
+            }
+            salida.setFechaVencimiento(lote.fechaVencimiento());
+            cupos.add(cupoDe(lote));
+        } else {
+            if (salida.getLoteId() != null || salida.getOrigenLote() != null) {
+                throw new ValidacionNegocioException("Esta presentación no tiene control de lotes habilitado.");
+            }
+            if (salida.getTipo() == MotivoSalida.VENCIMIENTO) {
+                throw new ValidacionNegocioException("No se puede verificar vencimiento sin un lote con fecha registrada.");
+            }
+            if (cantidad > movimientoRepository.sumarCantidadPorPresentacion(id)) {
+                throw new ValidacionNegocioException("Stock insuficiente para registrar la salida.");
+            }
+        }
+        MovimientoInventario m = movimientoRepository.save(nuevoMovimiento(salida.getPresentacion(),
+                TipoMovimientoInventario.valueOf("SALIDA_" + salida.getTipo().name()), -cantidad, mov -> mov.setSalida(salida)));
+        if (!cupos.isEmpty()) {
+            repartirSalida(m, cupos, cantidad);
+            var demandas = reservaCompromisos.demandasDe(id);
+            int faltante = CoberturaReservas.faltante(CoberturaReservas.lotesVendibles(calcularExistencias(id)), demandas);
+            if (faltante > 0) incidenciaRepository.save(new IncidenciaCobertura(salida.getPresentacion(), null, faltante, reglaVencimiento.ahora()));
+        }
+        return m.getId();
     }
 
     // ------------------------------------------------------------------------------------------------

@@ -7,7 +7,6 @@ import com.planta.acopio.entity.Producto;
 import com.planta.acopio.entity.Proveedor;
 import com.planta.acopio.entity.RegistroAcopio;
 import com.planta.acopio.entity.Rol;
-import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.entity.Unidad;
 import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.entity.Venta;
@@ -285,7 +284,7 @@ class ExportacionExcelIntegrationTest {
         Venta v = new Venta();
         v.setUuidCliente(uuid);
         v.setFecha(fecha);
-        v.setTipoCliente(TipoClienteVenta.PUBLICO);
+        v.setTipoCliente("PUBLICO");
         v.setTotal(new BigDecimal("10.00").multiply(BigDecimal.valueOf(lineas.length)));
         v.setVendedor(usuario);
         v = ventaRepository.saveAndFlush(v);

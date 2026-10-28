@@ -51,11 +51,6 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
     @Query("SELECT SUM(r.litros) FROM RegistroAcopio r WHERE r.unidad.id = :unidadId AND r.fechaHora BETWEEN :inicio AND :fin")
     BigDecimal sumLitrosPorUnidadYFecha(@Param("unidadId") UUID unidadId, @Param("inicio") LocalDateTime inicio, @Param("fin") LocalDateTime fin);
 
-    // Fase A: entregas cuya zona historica no se pudo determinar (informe de revision de zonas).
-    @Query(value = "SELECT r FROM RegistroAcopio r WHERE r.zona IS NULL ORDER BY r.proveedor.nombre, r.fechaHora",
-           countQuery = "SELECT count(r) FROM RegistroAcopio r WHERE r.zona IS NULL")
-    Page<RegistroAcopio> findSinZona(Pageable pageable);
-
     // Fase B: corregir o liquidar una entrega bloquea su fila hasta el fin de la transaccion, asi dos correcciones (o una correccion y
     // una liquidacion) simultaneas se aplican una tras otra y nunca leen la misma base.
     @Lock(LockModeType.PESSIMISTIC_WRITE)
@@ -74,7 +69,7 @@ public interface RegistroAcopioRepository extends JpaRepository<RegistroAcopio, 
     // combinables, todos opcionales (parametro null = sin filtrar por ese
     // campo). Fase E: zonaId filtra por la zona de CADA ENTREGA (registro_acopio.zona_id, la que tenia el
     // proveedor cuando entrego), no por su zona actual; una entrega sin zona determinada (zona_id nulo) no aparece en
-    // ninguna zona (ver /api/admin/zonas/revision). sinAnalisis usa
+    // ninguna zona. sinAnalisis usa
     // NOT EXISTS contra analisis_calidad -- registros que todavia no tienen
     // ninguna muestra de laboratorio asociada.
     //

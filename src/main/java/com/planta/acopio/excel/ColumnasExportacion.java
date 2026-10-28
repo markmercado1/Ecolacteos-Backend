@@ -9,7 +9,6 @@ import com.planta.acopio.dto.DetalleVentaResponse;
 import com.planta.acopio.dto.FamiliaResponse;
 import com.planta.acopio.dto.FilaPrecioPresentacionResponse;
 import com.planta.acopio.dto.FilaStockResponse;
-import com.planta.acopio.dto.InformeProduccionDiarioResponse;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.dto.JornadaBandejaResponse;
 import com.planta.acopio.dto.LoteProduccionResponse;
@@ -205,18 +204,6 @@ public final class ColumnasExportacion {
         return detalles.stream().map(d -> d.presentacionNombre() + " x " + d.cantidadObtenida()).collect(Collectors.joining("; "));
     }
 
-    public static final List<ColumnaExcel<InformeProduccionDiarioResponse>> INFORMES_PRODUCCION = List.of(
-            fecha("Fecha", InformeProduccionDiarioResponse::fecha),
-            entero("Quesos diarios", InformeProduccionDiarioResponse::quesosDiarios),
-            entero("Quesos reparados", InformeProduccionDiarioResponse::quesosReparados),
-            entero("Quesos de recorte", InformeProduccionDiarioResponse::quesosDeRecorte),
-            entero("Total de quesos", InformeProduccionDiarioResponse::totalQuesos),
-            decimal("Recorte (kg)", InformeProduccionDiarioResponse::recorteEnKilos),
-            texto("Responsable", 26, InformeProduccionDiarioResponse::responsableNombre),
-            fechaHora("Registrado", InformeProduccionDiarioResponse::creadoEn),
-            texto("Actualizado por", 26, InformeProduccionDiarioResponse::actualizadoPorNombre),
-            fechaHora("Actualizado", InformeProduccionDiarioResponse::actualizadoEn)
-    );
 
     public static final List<ColumnaExcel<FilaStockResponse>> STOCK = List.of(
             texto("Familia", 20, FilaStockResponse::familiaNombre),
@@ -290,6 +277,26 @@ public final class ColumnasExportacion {
         agregarModalidad(columnas, "Mayorista", FilaPrecioPresentacionResponse::mayorista);
         agregarModalidad(columnas, "Proveedor", FilaPrecioPresentacionResponse::proveedor);
         agregarModalidad(columnas, "Público", FilaPrecioPresentacionResponse::publico);
+        return List.copyOf(columnas);
+    }
+
+    /**
+     * Columnas de la exportacion de precios con UNA triada (precio, vigente desde, situacion) por cada tipo del catalogo: los tres originales
+     * primero y en su orden de siempre (Mayorista, Proveedor, Publico) para que el archivo actual no cambie, y despues los tipos nuevos por codigo.
+     */
+    public static List<ColumnaExcel<FilaPrecioPresentacionResponse>> preciosPresentacion(List<com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse> tipos) {
+        List<ColumnaExcel<FilaPrecioPresentacionResponse>> columnas = new ArrayList<>(List.of(
+                texto("Familia", 20, FilaPrecioPresentacionResponse::familiaNombre),
+                texto("Producto", 28, FilaPrecioPresentacionResponse::productoNombre),
+                texto("Presentación", 28, FilaPrecioPresentacionResponse::presentacionNombre)));
+        List<String> originales = List.of("MAYORISTA", "PROVEEDOR", "PUBLICO");
+        List<com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse> ordenados = new ArrayList<>();
+        for (String codigo : originales) tipos.stream().filter(t -> t.codigo().equals(codigo)).findFirst().ifPresent(ordenados::add);
+        tipos.stream().filter(t -> !originales.contains(t.codigo())).sorted(java.util.Comparator.comparing(t -> t.codigo())).forEach(ordenados::add);
+        for (var t : ordenados) {
+            String codigo = t.codigo();
+            agregarModalidad(columnas, t.nombre(), f -> f.porTipo() == null ? null : f.porTipo().get(codigo));
+        }
         return List.copyOf(columnas);
     }
 

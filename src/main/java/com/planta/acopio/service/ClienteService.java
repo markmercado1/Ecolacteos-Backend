@@ -14,7 +14,10 @@ import com.planta.acopio.entity.Cliente;
 import com.planta.acopio.entity.ClienteConsentimiento;
 import com.planta.acopio.entity.ClienteFusion;
 import com.planta.acopio.entity.ClienteTelefono;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.ClienteTipoPrecio;
+import com.planta.acopio.entity.ReglaComprador;
+import com.planta.acopio.repository.ClienteTipoPrecioRepository;
+import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.entity.TipoPersona;
 import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.exception.ConflictoNegocioException;
@@ -76,11 +79,16 @@ public class ClienteService {
     private final UsuarioRepository usuarioRepository;
     private final PrivacidadService privacidad;
     private final HistorialComprasService historialCompras;
+    private final ClienteTipoPrecioRepository habilitaciones;
+    private final TipoPrecioService tiposPrecio;
 
     public ClienteService(ClienteRepository clienteRepository, ClienteTelefonoRepository telefonoRepository,
                           ClienteConsentimientoRepository consentimientoRepository, ClienteFusionRepository fusionRepository,
                           ProveedorRepository proveedorRepository, VentaRepository ventaRepository, ReservaRepository reservaRepository,
-                          UsuarioRepository usuarioRepository, PrivacidadService privacidad, HistorialComprasService historialCompras) {
+                          UsuarioRepository usuarioRepository, PrivacidadService privacidad, HistorialComprasService historialCompras,
+                          ClienteTipoPrecioRepository habilitaciones, TipoPrecioService tiposPrecio) {
+        this.habilitaciones = habilitaciones;
+        this.tiposPrecio = tiposPrecio;
         this.clienteRepository = clienteRepository;
         this.telefonoRepository = telefonoRepository;
         this.consentimientoRepository = consentimientoRepository;
@@ -112,7 +120,7 @@ public class ClienteService {
             if (!esAdmin) throw new ValidacionNegocioException("Solo ADMIN habilita a un cliente como mayorista. Regístralo como regular y pídeselo a ADMIN.");
             motivoMayorista = motivoMayorista(dto.motivoMayorista());
         }
-        String canal = canalHabitual(dto.canalHabitual(), mayorista);
+        String canal = canalHabitual(dto.canalHabitual(), mayorista ? Set.of("MAYORISTA") : Set.of());
         verificarUnicos(doc, null);
         if (!dto.confirmadoSinCoincidencia()) {
             List<String> mismos = fichasConTelefono(telefono);
@@ -130,15 +138,12 @@ public class ClienteService {
         aplicar(c, doc);
         c.setCorreo(correo);
         c.setCanalHabitual(canal);
-        if (mayorista) {
-            c.setMayorista(true);
-            c.setMayoristaMotivo(motivoMayorista);
-            c.setMayoristaCambiadoPor(usuario);
-            c.setMayoristaCambiadoEn(LocalDateTime.now(LIMA));
-        }
         c.setCreadoPor(usuario);
         c.setCreadoEn(LocalDateTime.now(LIMA));
         c = clienteRepository.saveAndFlush(c);
+        if (mayorista) {
+            habilitaciones.save(new ClienteTipoPrecio(c.getId(), "MAYORISTA", usuario, LocalDateTime.now(LIMA), motivoMayorista));
+        }
         telefonoRepository.save(new ClienteTelefono(c.getId(), telefono));
         consentimientoRepository.save(consentimiento(c.getId(), ClienteConsentimiento.REGISTRO, ClienteConsentimiento.OTORGADO, null,
                 formaRegistro, dto.avisoVersion(), usuario, null));
@@ -166,7 +171,7 @@ public class ClienteService {
         verificarUnicos(doc, id);
         aplicar(c, doc);
         c.setCorreo(correo(dto.correo()));
-        if (dto.canalHabitual() != null) c.setCanalHabitual(canalHabitual(dto.canalHabitual(), c.isMayorista()));
+        if (dto.canalHabitual() != null) c.setCanalHabitual(canalHabitual(dto.canalHabitual(), habilitados(c.getId())));
         return respuesta(c, true);
     }
 
@@ -190,18 +195,36 @@ public class ClienteService {
         return respuesta(c, true);
     }
 
-    /** Solo ADMIN habilita (o quita) el canal MAYORISTA, con motivo; queda quien y cuando. */
+    /** Compatibilidad: habilitar o quitar el tipo MAYORISTA es una habilitacion como cualquier otra. */
     @Transactional
     public ClienteResponse cambiarMayorista(UUID id, boolean mayorista, String motivo) {
+        return cambiarHabilitacion(id, "MAYORISTA", mayorista, motivo);
+    }
+
+    /**
+     * Solo ADMIN habilita (o quita) a un cliente para un tipo de precio con regla CLIENTE_HABILITADO, con motivo; queda quien y cuando.
+     * Quitarla NO cambia el tipo habitual guardado: si deja de ser valido, el panel pide elegir otro (nada se cambia en silencio).
+     */
+    @Transactional
+    public ClienteResponse cambiarHabilitacion(UUID id, String codigo, boolean habilitado, String motivo) {
         Cliente c = vigente(id);
         String m = motivoMayorista(motivo);
-        c.setMayorista(mayorista);
-        // sin la habilitacion, el canal que se propone vuelve a PUBLICO (V34: MAYORISTA exige ficha mayorista)
-        if (!mayorista) c.setCanalHabitual(TipoClienteVenta.PUBLICO.name());
-        c.setMayoristaMotivo(m);
-        c.setMayoristaCambiadoPor(usuarioActual());
-        c.setMayoristaCambiadoEn(LocalDateTime.now(LIMA));
+        TipoPrecio tipo = habilitado ? tiposPrecio.exigirActivo(codigo) : tiposPrecio.obtener(codigo);
+        if (tipo.getReglaComprador() != ReglaComprador.CLIENTE_HABILITADO) {
+            throw new ValidacionNegocioException("El tipo " + tipo.getNombre() + " no necesita habilitar clientes: su regla es " + tipo.getReglaComprador() + ".");
+        }
+        boolean actual = habilitaciones.existsByClienteIdAndTipoCodigo(id, tipo.getCodigo());
+        if (habilitado) {
+            // se reemplaza la habilitacion (quien, cuando y motivo del ultimo cambio)
+            habilitaciones.save(new ClienteTipoPrecio(id, tipo.getCodigo(), usuarioActual(), LocalDateTime.now(LIMA), m));
+        } else if (actual) {
+            habilitaciones.deleteById(new ClienteTipoPrecio.Clave(id, tipo.getCodigo()));
+        }
         return respuesta(c, true);
+    }
+
+    private Set<String> habilitados(UUID clienteId) {
+        return habilitaciones.findByClienteId(clienteId).stream().map(ClienteTipoPrecio::getTipoCodigo).collect(java.util.stream.Collectors.toSet());
     }
 
     @Transactional
@@ -449,16 +472,29 @@ public class ClienteService {
         return m;
     }
 
-    /** Canal habitual: PUBLICO (por defecto) o MAYORISTA (solo una ficha mayorista). PROVEEDOR es de las fichas de proveedor. */
-    public static String canalHabitual(String crudo, boolean mayorista) {
-        String canal = crudo == null || crudo.isBlank() ? TipoClienteVenta.PUBLICO.name() : crudo.trim().toUpperCase();
-        if (TipoClienteVenta.PROVEEDOR.name().equals(canal)) {
-            throw new ValidacionNegocioException("El canal PROVEEDOR es solo para proveedores del padrón: elige al proveedor como comprador, no una ficha de cliente.");
+    /**
+     * Tipo habitual de un cliente: un tipo ACTIVO del catalogo (PUBLICO por defecto) cuya regla admita a un cliente; si exige habilitacion, el
+     * cliente debe tenerla. La regla PROVEEDOR_PADRON es de las fichas de proveedor, no de un cliente.
+     */
+    public String canalHabitual(String crudo, Set<String> habilitados) {
+        String canal = crudo == null || crudo.isBlank() ? TipoPrecio.PUBLICO : crudo.trim().toUpperCase();
+        TipoPrecio tipo = tiposPrecio.exigirActivo(canal);
+        if (tipo.getReglaComprador() == ReglaComprador.PROVEEDOR_PADRON) {
+            throw new ValidacionNegocioException("El tipo " + tipo.getNombre() + " es solo para proveedores del padrón: elige al proveedor como comprador, no una ficha de cliente.");
         }
-        if (!TipoClienteVenta.PUBLICO.name().equals(canal) && !TipoClienteVenta.MAYORISTA.name().equals(canal)) {
+        if (tipo.getReglaComprador() == ReglaComprador.CLIENTE_HABILITADO && !habilitados.contains(tipo.getCodigo())) {
+            throw new ValidacionNegocioException("El tipo " + tipo.getNombre() + " es solo para clientes habilitados para ese tipo de precio.");
+        }
+        return canal;
+    }
+
+    /** Validacion estatica de las dos opciones de la plantilla de importacion de clientes (Publico y Mayorista). */
+    public static String canalHabitualImportacion(String crudo, boolean mayorista) {
+        String canal = crudo == null || crudo.isBlank() ? TipoPrecio.PUBLICO : crudo.trim().toUpperCase();
+        if (!TipoPrecio.PUBLICO.equals(canal) && !"MAYORISTA".equals(canal)) {
             throw new ValidacionNegocioException("Canal no válido: «" + crudo + "». Usa PUBLICO o MAYORISTA.");
         }
-        if (TipoClienteVenta.MAYORISTA.name().equals(canal) && !mayorista) {
+        if ("MAYORISTA".equals(canal) && !mayorista) {
             throw new ValidacionNegocioException("El canal MAYORISTA es solo para clientes habilitados como mayoristas.");
         }
         return canal;
@@ -510,14 +546,15 @@ public class ClienteService {
     }
 
     private ClienteResponse respuesta(Cliente c, List<String> telefonos, ResumenReservas reservas, boolean verCompleto) {
+        Set<String> tipos = habilitados(c.getId());
         return new ClienteResponse(c.getId(), c.getTipoPersona().name(), c.getNombre(), c.getRazonSocial(),
                 verCompleto ? c.getDni() : Enmascarar.documento(c.getDni()),
                 verCompleto ? c.getRuc() : Enmascarar.documento(c.getRuc()),
                 verCompleto ? c.getCorreo() : Enmascarar.correo(c.getCorreo()),
                 verCompleto ? telefonos : telefonos.stream().map(Enmascarar::telefono).toList(),
-                c.isMayorista(), c.isActivo(), c.getFusionadoEnId(), c.getCreadoEn(), verCompleto,
+                tipos.contains("MAYORISTA"), c.isActivo(), c.getFusionadoEnId(), c.getCreadoEn(), verCompleto,
                 estado(c.getId(), ClienteConsentimiento.REGISTRO), estado(c.getId(), ClienteConsentimiento.COMERCIAL), c.getCanalHabitual(),
-                reservas);
+                reservas, tipos.stream().sorted().toList());
     }
 
     private EstadoAutorizacion estado(UUID clienteId, String finalidad) {

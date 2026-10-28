@@ -1,3 +1,34 @@
+## Actualización 2026-10-27 — salidas y retirada de módulos (V36)
+
+Esta actualización prevalece sobre las referencias históricas de este documento.
+
+- Nuevos `POST /api/inventario/presentaciones/{id}/salidas` y `POST /api/inventario/insumos/{id}/salidas`, solo ADMIN, HTTP 200.
+- JSON: `uuidCliente` (UUID obligatorio), `cantidad` positiva (producto entero, insumo hasta 2 decimales), `tipo` (`VENCIMIENTO`, `DETERIORO`, `OTRA`), `motivo` no vacío hasta 500 caracteres; `origenLote` (`LOTE` o `REGULARIZACION`) y `loteId` juntos cuando la presentación controla vencimiento. Insumos no aceptan lotes. Vencimiento de producto exige lote efectivamente vencido según ReglaVencimiento.
+- Respuesta: `id`, `movimientoId`, `cantidad`, `tipo`, `motivo`, `origenLote`, `loteId`, `fechaVencimiento`, `usuarioNombre`, `creadoEn`. Reintento con la misma clave/datos devuelve lo registrado sin descontar otra vez; clave con otros datos: 409. Validación/saldo: 400; recurso inexistente: 404; rol insuficiente: 403.
+- V36 añade `salida_inventario` (documento e idempotencia), `salida_id` a los libros existentes y restricciones/índices únicos. Tipos Kardex `SALIDA_VENCIMIENTO`, `SALIDA_DETERIORO`, `SALIDA_OTRA`; documento SALIDA con referencia, actor y motivo. Producto reparte el retiro al lote existente; insumo mantiene stock = suma del libro. No hay segundo Kardex.
+- Eliminados `/api/informes-produccion` y subrutas, `/api/exportaciones/informes-produccion`, `/api/admin/proveedores/revision-documentos`, `/api/admin/zonas/revision`. La última ruta cae en el CRUD de zona por id y devuelve 400 por UUID inválido. Se conserva el historial SQL de informes, documentos, zonas y acopios.
+- Sin cambios en contratos/reglas de `/api/pagos` (liquidaciones de leche) y `/api/pagos-proveedor` (desembolsos y aplicaciones), ni CRUD de insumos y recetas.
+- No existe fecha de vencimiento/lote de ingreso para insumos: solo retiro manual justificado, sin detección automática ni historia inventada. Productos sin control admiten deterioro/otra, no vencimiento sin evidencia.
+- Migración comprobada en PostgreSQL temporal; no aplicada a una base habitual ni a producción. Sin integración ni despliegue automático.
+
+## Actualización 2026-10-28 — tipos de precio dinámicos, etapa 2 (V39)
+
+- **El enum `TipoClienteVenta` ya no existe.** `precio_presentacion.modalidad`, `venta.tipo_cliente` y `cliente.canal_habitual` referencian `tipo_precio(codigo)` con clave foránea (reemplaza los CHECK de tres valores). El **código** es el identificador estable: se define al crear (o se deriva del nombre: mayúsculas, sin tildes, `^[A-Z][A-Z0-9_]{1,14}$`) y no cambia nunca; editar el nombre no altera ninguna referencia. Un tipo nuevo se usa en precios, ventas y clientes sin tocar el código.
+- **Regla de comprador** (`tipo_precio.regla_comprador`, fija al crear): `CUALQUIERA` (cliente varios, cliente o proveedor), `CLIENTE_HABILITADO` (un cliente habilitado para ese tipo) y `PROVEEDOR_PADRON` (un proveedor del padrón). MAYORISTA = CLIENTE_HABILITADO, PROVEEDOR = PROVEEDOR_PADRON, PUBLICO = CUALQUIERA. No hay condiciones por tipo en el código.
+- **Habilitación de clientes**: tabla `cliente_tipo_precio` (única fuente de verdad; quién, cuándo y motivo). V39 migra a ella a cada mayorista con su motivo; `cliente.mayorista*` queda sin uso y se retirará después. `mayorista` en las respuestas es solo el derivado «habilitado para MAYORISTA» (compatibilidad); la lista completa es `tiposHabilitados`.
+- **Nuevos endpoints (ADMIN):** `POST /api/tipos-precio` `{nombre, codigo?, descripcion?, reglaComprador, motivo}` (201; 409 código o nombre repetido), `PUT /api/tipos-precio/{codigo}` `{nombre, descripcion?, motivo}`, `PUT /api/clientes/{id}/tipos-precio/{codigo}` `{habilitado, motivo}` (solo tipos CLIENTE_HABILITADO). `PUT /api/clientes/{id}/mayorista` se conserva (equivale a habilitar MAYORISTA).
+- **Validación en el servidor:** precio y venta nuevos exigen un tipo existente y activo (el reintento idempotente, el histórico y el retiro de reservas confirmadas no cambian); en ventas del panel se aplica la regla de comprador del tipo. El tipo habitual de un cliente debe ser activo y admitido por su regla; **quitar una habilitación no cambia el tipo habitual guardado** (el panel pide elegir uno válido). La app móvil no cambia.
+- **Precios:** `FilaPrecioPresentacionResponse` agrega `porTipo` (un resumen por cada tipo del catálogo, por código) y conserva `mayorista`, `proveedor`, `publico`. La **exportación de precios** trae una terna (precio, vigente desde, situación) por cada tipo: los tres originales primero y en su orden de siempre, luego los nuevos por código. No existe importación de precios; la importación de clientes conserva sus opciones «Regular/Mayorista» y «Público/Mayorista».
+- **Límite conocido:** el alta de un cliente (registro y plantilla de importación) solo ofrece habilitar MAYORISTA; otros tipos se habilitan después desde la ficha.
+
+## Actualización 2026-10-27 — tipos de precio administrables, etapa 1 (V37)
+
+- `GET /api/tipos-precio?soloActivos=` (VENTAS, ADMIN) → `[{codigo, nombre, descripcion, activo, protegido, ultimoCambio: {activo, motivo, usuarioNombre, creadoEn}|null}]`. Con `soloActivos=true` solo los que se pueden usar en operaciones nuevas.
+- `PUT /api/tipos-precio/{codigo}/estado` (ADMIN) `{activo, motivo}` → el tipo. Motivo obligatorio; ningún tipo está protegido (V38), pero no se puede desactivar el **último** activo (400); repetir el estado: 409; código desconocido: 404. Con PUBLICO desactivado se rechazan ventas y **reservas nuevas** a ese precio; el retiro de reservas ya confirmadas, el historial y el listado del catálogo no cambian.
+- Un tipo desactivado se **rechaza (400)** en precios nuevos (`POST` de precio por presentación) y ventas nuevas (`POST /api/ventas...`); el reintento idempotente de una venta ya registrada y toda consulta histórica no cambian. No se modifica ningún precio, cliente ni venta existente.
+- V37 (aditiva): `tipo_precio` (MAYORISTA, PROVEEDOR, PUBLICO activos) y `cambio_tipo_precio` (quién, cuándo y por qué). `precio_presentacion`, `venta` y `cliente` no se tocan; sus CHECK siguen igual.
+- **Pendiente (etapa 2):** crear tipos nuevos exige pasar `TipoClienteVenta` de enum a texto con clave foránea a `tipo_precio` en `precio_presentacion.modalidad`, `precio_queso.modalidad` y `venta.tipo_cliente`, definir cómo se comporta un tipo nuevo en `CompradorService.validarParaCanal`, y hacer dinámicas las columnas de la tabla de precios y de su Excel.
+
 # API_DOCUMENTATION.md — Backend EcoLácteos v1
 
 Guía rápida para el equipo de frontend (Angular/Flutter). El detalle exacto de cada
@@ -409,8 +440,8 @@ Migración `V31__documentos_proveedor.sql` (**aditiva, no modifica ningún valor
 Migración `V32__igv_configurable.sql` (**aditiva y neutra**: no inserta tasas ni clasifica productos; no toca precios, ventas ni reservas). **Los precios son finales** (lo publicado es lo que paga
 el cliente): el IGV **nunca se suma**; cuando corresponde se **desglosa dentro** del precio.
 
-- **Cálculo APAGADO por defecto**: `app.tributario.igv.calculo-habilitado` (`TRIBUTARIO_IGV_CALCULO_HABILITADO`, `false`). Es la decisión del usuario mientras el **contador** no confirme la afectación
-  de cada producto, la tasa y el redondeo. Apagado ⇒ las ventas se registran **exactamente como antes** (sin foto tributaria), el catálogo no dice «Incluye IGV» y el estado es **PENDIENTE**,
+- **Cálculo APAGADO por defecto** y **encendible desde el panel** (V35, ver abajo): `app.tributario.igv.calculo-habilitado` (`TRIBUTARIO_IGV_CALCULO_HABILITADO`, `false`) solo es el valor inicial
+  mientras nadie haya decidido. Apagado ⇒ las ventas se registran **exactamente como antes** (sin foto tributaria), el catálogo no dice «Incluye IGV» y el estado es **PENDIENTE**,
   aunque la configuración esté preparada.
 - **Configuración (ADMIN, `/api/admin/tributario`, exclusiva de la web):** `GET /estado` (calculoHabilitado, `PENDIENTE`|`ACTIVO`, tasa vigente y programada, presentaciones activas por afectación,
   avisos); `GET|POST /tasas-igv` (`{tasa, vigenteDesde, motivo}`; 0 < tasa < 100, hasta 2 decimales; una fecha por tasa, 409); `GET /afectaciones?busqueda&page&size` (presentaciones activas con su
@@ -424,6 +455,21 @@ el cliente): el IGV **nunca se suma**; cuando corresponde se **desglosa dentro**
   gravada con tasa vigente, con el cálculo encendido y con precio). La exportación de ventas agrega «Afectación IGV», «Valor de venta» e «IGV incluido».
 - **Contrato móvil sin cambios** (`VentaRequest`/`VentaResponse`).
 - **Fuera de alcance:** clientes identificados en ventas, facturación electrónica, detracciones, retenciones y cualquier cambio en pagos a proveedores.
+
+### 16.1 Interruptor del IGV desde el panel (V35)
+
+Migración `V35__igv_calculo_activable.sql` (**aditiva**: una tabla nueva, `cambio_calculo_igv`, append-only; nace vacía). Quien administra decide cuándo se calcula el IGV; no hace falta tocar
+variables de entorno ni reiniciar.
+
+- `PUT /api/admin/tributario/calculo` (ADMIN) `{habilitado, motivo}` → `EstadoIgvResponse`. El **motivo es obligatorio** (también lo exige la base); pedir el estado en el que ya está ⇒ **409**.
+  Cada cambio guarda quién, cuándo y por qué; el estado vigente es el **último** cambio y, si nunca hubo uno, el valor por defecto de la propiedad (apagado). El resultado se aplica de inmediato en
+  este servidor (y como mucho tras 15 s en otro).
+- `GET /estado` agrega `ultimoCambio` = `{habilitado, motivo, usuarioNombre, creadoEn}` o `null`. Con el cálculo apagado el aviso dice que un administrador puede activarlo desde la pantalla.
+- `POST /api/admin/tributario/afectaciones/lote` (ADMIN) `{afectacion: GRAVADO|EXONERADO|INAFECTO, vigenteDesde, motivo, soloSinDefinir?}` → `{aplicadas, omitidas}`. Clasifica de una vez las
+  presentaciones **activas**; por defecto (`soloSinDefinir` verdadero) solo las que no tienen afectación a esa fecha, y **nunca pisa** una decisión de la misma fecha ni repite la que ya rige. Cada
+  presentación recibe su propio registro (se puede cambiar después una a una). `SIN_DEFINIR` no es una clasificación válida en lote.
+- **Qué cambia al encender:** solo las **ventas nuevas** (precio final sin variar; el IGV sale por `precio × tasa / (100 + tasa)`, p. ej. 118,00 ⇒ 18,00). Encender o apagar **no recalcula** ventas
+  ni reservas ya registradas. Lo que quede sin afectación (o sin tasa vigente) se vende **sin determinar**; el panel lo avisa antes de activar.
 
 ## 17. Clientes, comprador de cada venta e historial de compras (Fase H, V33)
 

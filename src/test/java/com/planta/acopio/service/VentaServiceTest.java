@@ -76,7 +76,7 @@ class VentaServiceTest {
     @BeforeEach
     void setUp() {
         service = new VentaService(repository, detalleRepository, presentacionRepository, usuarioRepository,
-                entityManager, precioQuesoService, inventarioService, reservaService, igvService, compradorService);
+                entityManager, precioQuesoService, inventarioService, reservaService, igvService, compradorService, TiposPrecioSimulados.activos());
     }
 
     private Producto productoActivo() {
@@ -149,9 +149,9 @@ class VentaServiceTest {
     }
 
     @Test
-    void buscarRechazaUnTipoClienteQueNoEsUnValorLegalDelEnum() {
+    void buscarRechazaUnTipoClienteQueNoExisteEnElCatalogo() {
         assertThatThrownBy(() -> service.buscar(null, "NO_EXISTE", null, pageable))
-                .isInstanceOf(IllegalArgumentException.class);
+                .isInstanceOf(com.planta.acopio.exception.ValidacionNegocioException.class);
     }
 
     // Confirma que la metadata de paginacion (pagina/tamano/total) se
@@ -347,7 +347,7 @@ class VentaServiceTest {
         Venta existente = new Venta();
         existente.setId(UUID.randomUUID());
         existente.setFecha(LocalDate.of(2026, 9, 18));
-        existente.setTipoCliente(com.planta.acopio.entity.TipoClienteVenta.PUBLICO);
+        existente.setTipoCliente("PUBLICO");
         existente.setTotal(BigDecimal.valueOf(150));
         when(repository.findByUuidCliente(uuidCliente)).thenReturn(Optional.of(existente));
 
@@ -374,7 +374,7 @@ class VentaServiceTest {
         Venta existente = new Venta();
         existente.setId(UUID.randomUUID());
         existente.setFecha(LocalDate.of(2026, 9, 18));
-        existente.setTipoCliente(com.planta.acopio.entity.TipoClienteVenta.PUBLICO);
+        existente.setTipoCliente("PUBLICO");
         existente.setTotal(BigDecimal.valueOf(150));
         when(repository.findByUuidCliente(uuidCliente)).thenReturn(Optional.of(existente));
 

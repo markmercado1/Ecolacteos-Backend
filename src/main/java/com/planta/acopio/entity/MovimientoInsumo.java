@@ -45,6 +45,12 @@ public class MovimientoInsumo {
     @Column(name = "creado_en", nullable = false, updatable = false)
     private LocalDateTime creadoEn = LocalDateTime.now();
 
+    @ManyToOne
+    @JoinColumn(name = "salida_id")
+    private SalidaInventario salida;
+    public SalidaInventario getSalida() { return salida; }
+    public void setSalida(SalidaInventario salida) { this.salida = salida; }
+
     public MovimientoInsumo() {}
 
     public UUID getId() { return id; }

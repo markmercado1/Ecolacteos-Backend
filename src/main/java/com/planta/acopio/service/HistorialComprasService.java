@@ -110,7 +110,7 @@ public class HistorialComprasService {
         Page<Venta> pagina = tipo == TipoComprador.CLIENTE ? ventaRepository.findByClienteIdOrderByFechaDescIdDesc(id, pageable)
                 : ventaRepository.findByProveedorIdOrderByFechaDescIdDesc(id, pageable);
         Map<UUID, String> codigos = new HashMap<>();
-        return PaginaResponse.de(pagina.map(v -> new CompraResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(), v.getTotal(), v.getReservaId(),
+        return PaginaResponse.de(pagina.map(v -> new CompraResponse(v.getId(), v.getFecha(), v.getTipoCliente(), v.getTotal(), v.getReservaId(),
                 v.getReservaId() == null ? null : codigos.computeIfAbsent(v.getReservaId(),
                         r -> reservaRepository.findById(r).map(Reserva::getCodigo).orElse(null)),
                 detalleRepository.findByVentaId(v.getId()).stream()

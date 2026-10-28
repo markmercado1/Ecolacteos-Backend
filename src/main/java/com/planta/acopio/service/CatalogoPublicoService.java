@@ -3,7 +3,7 @@ package com.planta.acopio.service;
 import com.planta.acopio.dto.CatalogoPublicoResponse;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.PrecioQueso;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.repository.PrecioQuesoRepository;
 import com.planta.acopio.repository.PresentacionRepository;
 import org.slf4j.Logger;
@@ -155,7 +155,7 @@ public class CatalogoPublicoService {
     private Map<UUID, PrecioQueso> preciosPublicosVigentes(List<Presentacion> candidatas, LocalDate hoy) {
         List<UUID> ids = candidatas.stream().map(Presentacion::getId).toList();
         Map<UUID, PrecioQueso> vigentes = new HashMap<>();
-        for (PrecioQueso p : precioRepository.findVigentesHasta(ids, TipoClienteVenta.PUBLICO, hoy)) {
+        for (PrecioQueso p : precioRepository.findVigentesHasta(ids, TipoPrecio.PUBLICO, hoy)) {
             vigentes.merge(p.getPresentacion().getId(), p,
                     (a, b) -> b.getVigenteDesde().isAfter(a.getVigenteDesde()) ? b : a);
         }

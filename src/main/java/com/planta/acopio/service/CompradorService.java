@@ -6,7 +6,7 @@ import com.planta.acopio.dto.ClienteDtos.CompradorSugerencia;
 import com.planta.acopio.entity.Cliente;
 import com.planta.acopio.entity.ClienteTelefono;
 import com.planta.acopio.entity.Proveedor;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.entity.TipoComprador;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
@@ -18,6 +18,9 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import com.planta.acopio.repository.ClienteTipoPrecioRepository;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -37,14 +40,19 @@ public class CompradorService {
     private static final int LIMITE = 10;
 
     /** Comprador resuelto y validado para una operacion: lo que se copia en la venta. */
-    public record Comprador(TipoComprador tipo, UUID id, String nombre, String ruc, boolean mayorista, boolean activo) {}
+    public record Comprador(TipoComprador tipo, UUID id, String nombre, String ruc, Set<String> habilitados, boolean activo) {}
 
     private final ClienteRepository clienteRepository;
     private final ClienteTelefonoRepository telefonoRepository;
     private final ProveedorRepository proveedorRepository;
+    private final ClienteTipoPrecioRepository habilitaciones;
+    private final TipoPrecioService tipoPrecioService;
 
     public CompradorService(ClienteRepository clienteRepository, ClienteTelefonoRepository telefonoRepository,
-                            ProveedorRepository proveedorRepository) {
+                            ProveedorRepository proveedorRepository, ClienteTipoPrecioRepository habilitaciones,
+                            TipoPrecioService tipoPrecioService) {
+        this.habilitaciones = habilitaciones;
+        this.tipoPrecioService = tipoPrecioService;
         this.clienteRepository = clienteRepository;
         this.telefonoRepository = telefonoRepository;
         this.proveedorRepository = proveedorRepository;
@@ -90,13 +98,15 @@ public class CompradorService {
     private CompradorSugerencia cliente(Cliente c, String coincidencia) {
         List<ClienteTelefono> telefonos = telefonoRepository.findByClienteIdOrderByCreadoEnAsc(c.getId());
         String telefono = telefonos.isEmpty() ? null : telefonos.get(0).getTelefono();
+        Set<String> tipos = tiposHabilitados(c.getId());
         return new CompradorSugerencia(TipoComprador.CLIENTE.name(), c.getId(), c.getNombre(), Enmascarar.telefono(telefono),
-                Enmascarar.documento(c.getRuc() != null ? c.getRuc() : c.getDni()), c.isMayorista(), c.isActivo(), coincidencia, c.getCanalHabitual());
+                Enmascarar.documento(c.getRuc() != null ? c.getRuc() : c.getDni()), tipos.contains("MAYORISTA"), c.isActivo(), coincidencia, c.getCanalHabitual(),
+                tipos.stream().sorted().toList());
     }
 
     private static CompradorSugerencia proveedor(Proveedor p, String coincidencia) {
         return new CompradorSugerencia(TipoComprador.PROVEEDOR.name(), p.getId(), p.getNombre(), Enmascarar.telefono(p.getTelefono()),
-                Enmascarar.documento(p.getRuc() != null ? p.getRuc() : p.getDni()), false, Boolean.TRUE.equals(p.getActivo()), coincidencia, null);
+                Enmascarar.documento(p.getRuc() != null ? p.getRuc() : p.getDni()), false, Boolean.TRUE.equals(p.getActivo()), coincidencia, null, List.of());
     }
 
     // ------------------------------------------------------------------ resolver y validar
@@ -114,42 +124,48 @@ public class CompradorService {
             if (c.getFusionadoEnId() != null) {
                 throw new ValidacionNegocioException("Esa ficha se fusionó en otra: elige la ficha destino.");
             }
-            return new Comprador(tipo, c.getId(), c.getNombre(), c.getRuc(), c.isMayorista(), c.isActivo());
+            return new Comprador(tipo, c.getId(), c.getNombre(), c.getRuc(), tiposHabilitados(c.getId()), c.isActivo());
         }
         Proveedor p = proveedorRepository.findById(ref.id()).orElseThrow(() -> new RecursoNoEncontradoException("Proveedor no encontrado: " + ref.id()));
-        return new Comprador(tipo, p.getId(), p.getNombre(), p.getRuc(), false, Boolean.TRUE.equals(p.getActivo()));
+        return new Comprador(tipo, p.getId(), p.getNombre(), p.getRuc(), Set.of(), Boolean.TRUE.equals(p.getActivo()));
     }
 
     /** Para mostrar un vinculo ya guardado: no valida estado (la ficha pudo desactivarse o fusionarse despues). */
     public Comprador resolverAunqueFusionado(TipoComprador tipo, UUID id) {
         if (tipo == TipoComprador.CLIENTE) {
-            return clienteRepository.findById(id).map(c -> new Comprador(tipo, c.getId(), c.getNombre(), c.getRuc(), c.isMayorista(), c.isActivo())).orElse(null);
+            return clienteRepository.findById(id).map(c -> new Comprador(tipo, c.getId(), c.getNombre(), c.getRuc(), tiposHabilitados(c.getId()), c.isActivo())).orElse(null);
         }
-        return proveedorRepository.findById(id).map(p -> new Comprador(tipo, p.getId(), p.getNombre(), p.getRuc(), false, Boolean.TRUE.equals(p.getActivo())))
+        return proveedorRepository.findById(id).map(p -> new Comprador(tipo, p.getId(), p.getNombre(), p.getRuc(), Set.of(), Boolean.TRUE.equals(p.getActivo())))
                 .orElse(null);
     }
 
+    /** Tipos de precio con regla CLIENTE_HABILITADO para los que el cliente esta habilitado (unica fuente: cliente_tipo_precio). */
+    public Set<String> tiposHabilitados(UUID clienteId) {
+        return habilitaciones.findByClienteId(clienteId).stream().map(h -> h.getTipoCodigo()).collect(Collectors.toSet());
+    }
+
     /**
-     * Reglas de comprador por canal para una venta del panel. `comprador` null = cliente varios. Un comprador con la ficha
-     * desactivada no se usa (se puede vender como cliente varios).
+     * Reglas de comprador por tipo de precio para una venta del panel; la regla la declara el tipo (no hay condiciones por tipo en el
+     * codigo). `comprador` null = cliente varios. Un comprador con la ficha desactivada no se usa (se puede vender como cliente varios).
      */
-    public void validarParaCanal(TipoClienteVenta canal, Comprador comprador) {
+    public void validarParaCanal(String canal, Comprador comprador) {
         if (comprador != null && !comprador.activo()) {
             throw new ValidacionNegocioException("La ficha de " + comprador.nombre() + " está desactivada: reactívala o vende como «Cliente varios».");
         }
-        switch (canal) {
-            case PUBLICO -> { /* comprador opcional: cliente, proveedor o nadie */ }
-            case MAYORISTA -> {
+        TipoPrecio tipo = tipoPrecioService.obtener(canal);
+        switch (tipo.getReglaComprador()) {
+            case CUALQUIERA -> { /* comprador opcional: cliente, proveedor o nadie */ }
+            case CLIENTE_HABILITADO -> {
                 if (comprador == null || comprador.tipo() != TipoComprador.CLIENTE) {
-                    throw new ValidacionNegocioException("Una venta MAYORISTA necesita un cliente habilitado como mayorista.");
+                    throw new ValidacionNegocioException("Una venta " + tipo.getNombre() + " necesita un cliente habilitado para ese tipo de precio.");
                 }
-                if (!comprador.mayorista()) {
-                    throw new ValidacionNegocioException(comprador.nombre() + " no está habilitado como mayorista (lo habilita ADMIN en su ficha).");
+                if (!comprador.habilitados().contains(tipo.getCodigo())) {
+                    throw new ValidacionNegocioException(comprador.nombre() + " no está habilitado para " + tipo.getNombre() + " (lo habilita ADMIN en su ficha).");
                 }
             }
-            case PROVEEDOR -> {
+            case PROVEEDOR_PADRON -> {
                 if (comprador == null || comprador.tipo() != TipoComprador.PROVEEDOR) {
-                    throw new ValidacionNegocioException("Una venta al canal PROVEEDOR necesita elegir al proveedor del padrón que compra.");
+                    throw new ValidacionNegocioException("Una venta " + tipo.getNombre() + " necesita elegir al proveedor del padrón que compra.");
                 }
             }
         }

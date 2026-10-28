@@ -12,7 +12,6 @@ import com.planta.acopio.service.AnomaliaService;
 import com.planta.acopio.service.ConciliacionService;
 import com.planta.acopio.service.ConfiguracionSistemaService;
 import com.planta.acopio.service.FamiliaService;
-import com.planta.acopio.service.InformeProduccionDiarioService;
 import com.planta.acopio.service.InsumoService;
 import com.planta.acopio.service.InventarioInsumoService;
 import com.planta.acopio.service.InventarioService;
@@ -78,7 +77,6 @@ class ExportacionPermisosWebMvcTest {
     @MockBean private ConciliacionService conciliacionService;
     @MockBean private UnidadService unidadService;
     @MockBean private LoteProduccionService loteProduccionService;
-    @MockBean private InformeProduccionDiarioService informeService;
     @MockBean private InventarioService inventarioService;
     @MockBean private InventarioInsumoService inventarioInsumoService;
     @MockBean private AnalisisCalidadService analisisCalidadService;
@@ -113,7 +111,6 @@ class ExportacionPermisosWebMvcTest {
                 new Ruta("/api/exportaciones/reservas", Set.of("VENTAS", "ADMIN")),
                 new Ruta("/api/exportaciones/recepciones", Set.of("RECEPCION", "ADMIN")),
                 new Ruta("/api/exportaciones/lotes", Set.of("PRODUCCION", "ADMIN")),
-                new Ruta("/api/exportaciones/informes-produccion", Set.of("PRODUCCION", "ADMIN")),
                 new Ruta("/api/exportaciones/stock", Set.of("PRODUCCION", "VENTAS", "ADMIN")),
                 new Ruta("/api/exportaciones/inventario-insumos", Set.of("PRODUCCION", "ADMIN")),
                 new Ruta("/api/exportaciones/calidad-analizados", Set.of("CALIDAD", "ADMIN")),
@@ -142,7 +139,6 @@ class ExportacionPermisosWebMvcTest {
         when(ventaService.buscar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
         when(conciliacionService.listar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
         when(loteProduccionService.buscar(any(), any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(4), 0));
-        when(informeService.buscar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
         when(usuarioService.buscar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
         when(precioLitroService.listar(any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(0), 0));
         when(reservaService.listar(any(), any(), any(), any(), any(), any())).thenReturn(new PaginaResponse<>(List.of(), 0, 20, 0, 0));
@@ -153,7 +149,7 @@ class ExportacionPermisosWebMvcTest {
 
     private Object[] todosLosServicios() {
         return new Object[]{proveedorService, registroAcopioService, pagoService, ventaService, reservaService, conciliacionService,
-                unidadService, loteProduccionService, informeService, inventarioService, inventarioInsumoService, analisisCalidadService,
+                unidadService, loteProduccionService, inventarioService, inventarioInsumoService, analisisCalidadService,
                 anomaliaService, jornadaService, usuarioService, precioLitroService, precioQuesoService, zonaService, motivoService,
                 familiaService, productoService, insumoService, recetaService, configuracionService, clienteService};
     }

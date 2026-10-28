@@ -14,7 +14,6 @@ import com.planta.acopio.excel.LimitesExcel;
 import com.planta.acopio.service.AnalisisCalidadService;
 import com.planta.acopio.service.AnomaliaService;
 import com.planta.acopio.service.ConciliacionService;
-import com.planta.acopio.service.InformeProduccionDiarioService;
 import com.planta.acopio.service.InventarioInsumoService;
 import com.planta.acopio.service.InventarioService;
 import com.planta.acopio.service.JornadaService;
@@ -78,7 +77,6 @@ class ExportacionWebMvcTest {
     @MockBean private ConciliacionService conciliacionService;
     @MockBean private UnidadService unidadService;
     @MockBean private LoteProduccionService loteProduccionService;
-    @MockBean private InformeProduccionDiarioService informeService;
     @MockBean private InventarioService inventarioService;
     @MockBean private InventarioInsumoService inventarioInsumoService;
     @MockBean private AnalisisCalidadService analisisCalidadService;

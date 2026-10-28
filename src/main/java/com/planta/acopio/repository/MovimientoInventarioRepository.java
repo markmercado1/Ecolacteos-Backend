@@ -12,6 +12,8 @@ import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 
 public interface MovimientoInventarioRepository extends JpaRepository<MovimientoInventario, UUID> {
+    java.util.Optional<MovimientoInventario> findBySalidaId(UUID salidaId);
+
 
     // El stock nunca se guarda como valor mutable -- siempre se calcula como SUM(cantidad) agrupado por
     // presentacion_id (ver InventarioService). COALESCE cubre el caso de una presentacion sin movimientos.
@@ -27,13 +29,13 @@ public interface MovimientoInventarioRepository extends JpaRepository<Movimiento
             + "t.documento_id, t.documento_fecha, t.referencia, t.usuario_nombre, t.motivo FROM ("
             + "  SELECT m.id, m.creado_en, m.tipo_movimiento, m.cantidad, "
             + "    SUM(m.cantidad) OVER (ORDER BY m.creado_en, m.id) AS saldo, "
-            + "    CASE m.tipo_movimiento WHEN 'ENTRADA_PRODUCCION' THEN 'LOTE' WHEN 'SALIDA_VENTA' THEN 'VENTA' ELSE 'AJUSTE' END AS documento_tipo, "
-            + "    COALESCE(l.id, v.id, a.id) AS documento_id, "
-            + "    COALESCE(l.fecha, v.fecha, CAST(a.creado_en AS date)) AS documento_fecha, "
+            + "    CASE m.tipo_movimiento WHEN 'ENTRADA_PRODUCCION' THEN 'LOTE' WHEN 'SALIDA_VENTA' THEN 'VENTA' WHEN 'AJUSTE' THEN 'AJUSTE' ELSE 'SALIDA' END AS documento_tipo, "
+            + "    COALESCE(l.id, v.id, a.id, s.id) AS documento_id, "
+            + "    COALESCE(l.fecha, v.fecha, CAST(a.creado_en AS date), CAST(s.creado_en AS date)) AS documento_fecha, "
             + "    CASE m.tipo_movimiento WHEN 'ENTRADA_PRODUCCION' THEN 'Lote de producción' "
             + "      WHEN 'SALIDA_VENTA' THEN CONCAT('Venta · ', v.tipo_cliente) "
-            + "      ELSE CONCAT('Conteo físico: ', a.cantidad_anterior, ' → ', a.cantidad_corregida) END AS referencia, "
-            + "    COALESCE(ul.nombre, uv.nombre, ua.nombre) AS usuario_nombre, a.motivo AS motivo "
+            + "      WHEN 'AJUSTE' THEN CONCAT('Conteo físico: ', a.cantidad_anterior, ' → ', a.cantidad_corregida) ELSE CONCAT(s.origen_lote, ' ', s.lote_id, ' · Vencimiento: ', s.fecha_vencimiento) END AS referencia, "
+            + "    COALESCE(ul.nombre, uv.nombre, ua.nombre, us.nombre) AS usuario_nombre, COALESCE(a.motivo, s.motivo) AS motivo "
             + "  FROM movimiento_inventario m "
             + "  LEFT JOIN lote_produccion_detalle d ON d.id = m.lote_produccion_detalle_id "
             + "  LEFT JOIN lote_produccion l ON l.id = d.lote_id "
@@ -43,6 +45,8 @@ public interface MovimientoInventarioRepository extends JpaRepository<Movimiento
             + "  LEFT JOIN usuario uv ON uv.id = v.vendedor_id "
             + "  LEFT JOIN ajuste_inventario a ON a.id = m.ajuste_inventario_id "
             + "  LEFT JOIN usuario ua ON ua.id = a.usuario_id "
+            + "  LEFT JOIN salida_inventario s ON s.id = m.salida_id "
+            + "  LEFT JOIN usuario us ON us.id = s.usuario_id "
             + "  WHERE m.presentacion_id = CAST(:presentacionId AS uuid)"
             + ") t "
             + "WHERE (CAST(:desde AS timestamp) IS NULL OR t.creado_en >= CAST(:desde AS timestamp)) "

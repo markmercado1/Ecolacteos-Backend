@@ -101,7 +101,7 @@ class ColumnasExportacionTest {
         var fila = new FilaPrecioPresentacionResponse(UUID.randomUUID(), "Queso", UUID.randomUUID(), "Queso fresco", UUID.randomUUID(), "1 kg",
                 new PrecioModalidadResponse("VIGENTE", new BigDecimal("20.00"), LocalDate.of(2026, 10, 1)),
                 null,
-                new PrecioModalidadResponse("SIN_PRECIO", null, null));
+                new PrecioModalidadResponse("SIN_PRECIO", null, null), java.util.Map.of());
 
         assertThat(ColumnasExportacion.PRECIOS_PRESENTACION).hasSize(3 + 3 * 3);
         assertThat(valor(ColumnasExportacion.PRECIOS_PRESENTACION, "Mayorista", fila)).isEqualTo(new BigDecimal("20.00"));
@@ -109,6 +109,27 @@ class ColumnasExportacionTest {
         assertThat(valor(ColumnasExportacion.PRECIOS_PRESENTACION, "Proveedor", fila)).isNull();
         assertThat(valor(ColumnasExportacion.PRECIOS_PRESENTACION, "Público: situación", fila)).isEqualTo("SIN_PRECIO");
         assertThat(valores(ColumnasExportacion.PRECIOS_PRESENTACION, fila)).hasSize(12);
+    }
+
+    @Test
+    void laExportacionDePreciosTraeUnaTriadaPorCadaTipoDelCatalogoConLosOriginalesPrimero() {
+        var tipos = java.util.List.of(
+                tipo("DISTRIBUIDOR", "Distribuidor"), tipo("PUBLICO", "Público"), tipo("MAYORISTA", "Mayorista"), tipo("PROVEEDOR", "Proveedor"));
+        var columnas = ColumnasExportacion.preciosPresentacion(tipos);
+        var fila = new FilaPrecioPresentacionResponse(UUID.randomUUID(), "Queso", UUID.randomUUID(), "Queso fresco", UUID.randomUUID(), "1 kg", null, null, null,
+                java.util.Map.of("PUBLICO", new PrecioModalidadResponse("VIGENTE", new BigDecimal("15.00"), LocalDate.of(2026, 10, 1)),
+                        "DISTRIBUIDOR", new PrecioModalidadResponse("VIGENTE", new BigDecimal("9.00"), LocalDate.of(2026, 10, 2))));
+
+        assertThat(columnas).hasSize(3 + 4 * 3);
+        assertThat(columnas.stream().map(c -> c.titulo()).toList().subList(3, 6)).containsExactly("Mayorista", "Mayorista: vigente desde", "Mayorista: situación");   // el archivo de siempre no cambia
+        assertThat(valor(columnas, "Público", fila)).isEqualTo(new BigDecimal("15.00"));
+        assertThat(valor(columnas, "Distribuidor", fila)).isEqualTo(new BigDecimal("9.00"));            // el tipo nuevo, sin tocar el codigo
+        assertThat(valor(columnas, "Mayorista", fila)).isNull();                                           // sin precio: celda vacia, no rompe
+        assertThat(columnas.stream().map(c -> c.titulo()).toList().get(14)).isEqualTo("Distribuidor: situación");
+    }
+
+    private static com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse tipo(String codigo, String nombre) {
+        return new com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse(codigo, nombre, "", true, false, com.planta.acopio.entity.ReglaComprador.CUALQUIERA, null);
     }
 
     @Test

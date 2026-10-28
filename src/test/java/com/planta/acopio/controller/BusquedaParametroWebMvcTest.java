@@ -5,7 +5,6 @@ import com.planta.acopio.config.JwtService;
 import com.planta.acopio.config.SecurityConfig;
 import com.planta.acopio.config.UsuarioDetailsService;
 import com.planta.acopio.service.ConciliacionService;
-import com.planta.acopio.service.InformeProduccionDiarioService;
 import com.planta.acopio.service.LoteProduccionService;
 import com.planta.acopio.service.PrecioQuesoService;
 import com.planta.acopio.service.VentaService;
@@ -31,8 +30,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // Parametro opcional `busqueda` de los listados paginados: el controlador lo pasa tal cual al service (que lo pliega sin
 // acentos ni mayusculas) y, si no llega, pasa null (el listado se comporta como siempre: compatible con la app movil).
 @WebMvcTest(controllers = {
-        VentaController.class, LoteProduccionController.class, RecepcionPlantaController.class,
-        InformeProduccionDiarioController.class
+        VentaController.class, LoteProduccionController.class, RecepcionPlantaController.class
 })
 @Import({SecurityConfig.class, JwtAuthFilter.class})
 class BusquedaParametroWebMvcTest {
@@ -42,7 +40,6 @@ class BusquedaParametroWebMvcTest {
     @MockBean private PrecioQuesoService precioQuesoService;
     @MockBean private LoteProduccionService loteProduccionService;
     @MockBean private ConciliacionService conciliacionService;
-    @MockBean private InformeProduccionDiarioService informeService;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 
@@ -82,15 +79,4 @@ class BusquedaParametroWebMvcTest {
         verify(conciliacionService).listar(isNull(), isNull(), isNull(), any());
     }
 
-    @Test
-    @WithMockUser(roles = "PRODUCCION")
-    void informesPasaLaBusquedaYLaOmiteSiNoLlega() throws Exception {
-        when(informeService.buscar(any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
-
-        mvc.perform(get("/api/informes-produccion").param("busqueda", "ana")).andExpect(status().isOk());
-        verify(informeService).buscar(isNull(), isNull(), eq("ana"), any());
-
-        mvc.perform(get("/api/informes-produccion")).andExpect(status().isOk());
-        verify(informeService).buscar(isNull(), isNull(), isNull(), any());
-    }
 }

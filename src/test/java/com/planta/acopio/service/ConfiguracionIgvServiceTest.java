@@ -216,7 +216,7 @@ class ConfiguracionIgvServiceTest {
         assertThat(e.presentacionesActivas()).isEqualTo(2);
         assertThat(e.gravadas()).isEqualTo(1);
         assertThat(e.sinDefinir()).isEqualTo(1);
-        assertThat(e.avisos()).anyMatch(a -> a.contains("pendiente de la confirmación del contador"))
+        assertThat(e.avisos()).anyMatch(a -> a.contains("cálculo del IGV está desactivado"))
                 .anyMatch(a -> a.contains("No hay una tasa"))
                 .anyMatch(a -> a.contains("1 presentación activa no tiene"))
                 .anyMatch(a -> a.contains("gravadas pero ninguna tasa vigente"));

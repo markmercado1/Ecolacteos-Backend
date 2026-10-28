@@ -9,7 +9,7 @@ import com.planta.acopio.dto.VentaResumenResponse;
 import com.planta.acopio.dto.ClienteDtos;
 import com.planta.acopio.entity.AfectacionIgv;
 import com.planta.acopio.entity.TipoComprador;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Reserva;
 import com.planta.acopio.entity.Usuario;
@@ -73,11 +73,15 @@ public class VentaService {
     private final ConfiguracionIgvService igvService;
     private final CompradorService compradorService;
 
+    private final TipoPrecioService tipoPrecioService;
+
     public VentaService(VentaRepository repository, VentaDetalleRepository detalleRepository,
                          PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
                          EntityManager entityManager, PrecioQuesoService precioQuesoService,
                          InventarioService inventarioService, ReservaService reservaService,
-                         ConfiguracionIgvService igvService, CompradorService compradorService) {
+                         ConfiguracionIgvService igvService, CompradorService compradorService,
+                         TipoPrecioService tipoPrecioService) {
+        this.tipoPrecioService = tipoPrecioService;
         this.repository = repository;
         this.detalleRepository = detalleRepository;
         this.presentacionRepository = presentacionRepository;
@@ -115,7 +119,7 @@ public class VentaService {
     // cualquier motivo, la reserva sigue CONFIRMADA y no queda nada escrito.
     @Transactional
     public VentaResumenResponse registrarRetiroDeReserva(UUID reservaId, String uuidCliente, LocalDate fecha) {
-        Venta venta = crear(uuidCliente, fecha, TipoClienteVenta.PUBLICO.name(), reservaService.lineasParaRetiro(reservaId), reservaId, null, true);
+        Venta venta = crear(uuidCliente, fecha, TipoPrecio.PUBLICO, reservaService.lineasParaRetiro(reservaId), reservaId, null, true);
         return toResumenResponse(venta);
     }
 
@@ -136,14 +140,16 @@ public class VentaService {
                             + "venta existente no se modifica. Usa un uuidCliente nuevo para una venta distinta.");
         }
 
-        TipoClienteVenta modalidad = TipoClienteVenta.valueOf(tipoClienteStr);
+        String modalidad = tipoPrecioService.obtener(tipoClienteStr).getCodigo();
+        // un tipo desactivado no vende; el reintento idempotente de arriba ya devolvio lo registrado y el retiro de una reserva ya confirmada se honra
+        if (reservaId == null) tipoPrecioService.exigirActivo(modalidad);
 
         // Fase 4: retiro de una reserva. La reserva se bloquea y se pasa a RETIRADA ANTES de validar el stock: asi sus
         // unidades dejan de estar comprometidas y la venta solo se evalua contra las DEMAS reservas. Si algo falla mas
         // abajo, esta transaccion se revierte completa (la reserva sigue CONFIRMADA).
         Reserva reserva = null;
         if (reservaId != null) {
-            if (modalidad != TipoClienteVenta.PUBLICO) {
+            if (modalidad != TipoPrecio.PUBLICO) {
                 throw new ValidacionNegocioException("El retiro de una reserva se vende en el canal PUBLICO.");
             }
             reserva = reservaService.iniciarRetiro(reservaId, detallesSolicitados);
@@ -243,7 +249,7 @@ public class VentaService {
     // (esto ultimo ya lo garantiza @Min(1) en DetalleVentaRequest, pero se revalida aqui). A diferencia de
     // produccion, una venta puede combinar presentaciones de productos DISTINTOS (un cliente puede comprar
     // yogurt y queso en la misma venta) -- no hay una nocion de "producto de la venta" que las agrupe.
-    private List<DetalleResuelto> resolverDetalles(List<DetalleVentaRequest> detalles, TipoClienteVenta modalidad, LocalDate fecha) {
+    private List<DetalleResuelto> resolverDetalles(List<DetalleVentaRequest> detalles, String modalidad, LocalDate fecha) {
         List<DetalleVentaRequest> ordenados = detalles.stream()
                 .sorted(Comparator.comparing(DetalleVentaRequest::presentacionId))
                 .toList();
@@ -291,7 +297,7 @@ public class VentaService {
 
     private boolean coincideConSolicitud(Venta existente, LocalDate fecha, String tipoClienteStr, List<DetalleVentaRequest> detallesSolicitados) {
         if (!existente.getFecha().equals(fecha)) return false;
-        if (!existente.getTipoCliente().name().equals(tipoClienteStr)) return false;
+        if (!existente.getTipoCliente().equals(tipoClienteStr)) return false;
 
         Map<UUID, Integer> detallesExistentes = new HashMap<>();
         for (VentaDetalle d : detalleRepository.findByVentaId(existente.getId())) {
@@ -309,7 +315,7 @@ public class VentaService {
     // tipoCliente sea un valor legal del enum antes de pasarlo a la query
     // nativa (que lo recibe como String -- ver comentario en VentaRepository).
     public Page<VentaResumenResponse> buscar(LocalDate fecha, String tipoCliente, String busqueda, Pageable pageable) {
-        String tipoNormalizado = tipoCliente != null ? TipoClienteVenta.valueOf(tipoCliente).name() : null;
+        String tipoNormalizado = tipoCliente != null ? tipoPrecioService.obtener(tipoCliente).getCodigo() : null;
         return repository.buscarConFiltros(fecha, tipoNormalizado, BusquedaTexto.patronLike(busqueda), pageable)
                 .map(this::toResumenResponse);
     }
@@ -330,7 +336,7 @@ public class VentaService {
                             + "(contrato móvil) solo representa ventas de una sola línea.");
         }
         VentaDetalle d = detalles.get(0);
-        return new VentaResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(),
+        return new VentaResponse(v.getId(), v.getFecha(), v.getTipoCliente(),
                 d.getPresentacion().getId(), d.getPresentacion().getNombre(), d.getPresentacion().getProducto().getNombre(),
                 d.getCantidad(), d.getPrecioUnitario(), v.getTotal());
     }
@@ -347,7 +353,7 @@ public class VentaService {
         ClienteDtos.CompradorResumen comprador = v.getCompradorTipo() == null && v.getCompradorNombre() == null ? null
                 : new ClienteDtos.CompradorResumen(v.getCompradorTipo() == null ? null : v.getCompradorTipo().name(), compradorId,
                         v.getCompradorNombre(), v.getCompradorRuc());
-        return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente().name(), detalles, v.getTotal(), resumenIgv(lineas, v.getTotal()),
+        return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente(), detalles, v.getTotal(), resumenIgv(lineas, v.getTotal()),
                 comprador, v.getReservaId(), v.getReservaId() == null ? null : reservaService.codigoDe(v.getReservaId()));
     }
 

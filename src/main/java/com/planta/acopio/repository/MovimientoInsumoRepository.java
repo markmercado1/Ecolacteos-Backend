@@ -18,6 +18,8 @@ import java.util.UUID;
 // libro del insumo (orden creado_en, id) y recien despues se filtra por fechas y se pagina: el saldo de cada
 // fila es siempre el real, aunque la pagina o el rango no empiecen en el primer movimiento.
 public interface MovimientoInsumoRepository extends JpaRepository<MovimientoInsumo, UUID> {
+    java.util.Optional<MovimientoInsumo> findBySalidaId(UUID salidaId);
+
 
     @Query("SELECT COALESCE(SUM(m.cantidad), 0) FROM MovimientoInsumo m WHERE m.insumo.id = :insumoId")
     BigDecimal sumarCantidad(@Param("insumoId") UUID insumoId);
@@ -26,11 +28,12 @@ public interface MovimientoInsumoRepository extends JpaRepository<MovimientoInsu
             + "t.documento_id, t.documento_fecha, t.referencia, t.usuario_nombre, t.motivo FROM ("
             + "  SELECT m.id, m.creado_en, m.tipo_movimiento, m.cantidad, "
             + "    SUM(m.cantidad) OVER (ORDER BY m.creado_en, m.id) AS saldo, "
-            + "    CASE m.tipo_movimiento WHEN 'SALIDA_PRODUCCION' THEN 'LOTE' ELSE m.tipo_movimiento END AS documento_tipo, "
-            + "    l.id AS documento_id, l.fecha AS documento_fecha, "
-            + "    CASE WHEN l.id IS NOT NULL THEN CONCAT('Lote de producción · ', p.nombre) ELSE m.referencia END AS referencia, "
+            + "    CASE WHEN s.id IS NOT NULL THEN 'SALIDA' WHEN m.tipo_movimiento = 'SALIDA_PRODUCCION' THEN 'LOTE' ELSE m.tipo_movimiento END AS documento_tipo, "
+            + "    COALESCE(s.id, l.id) AS documento_id, COALESCE(CAST(s.creado_en AS date), l.fecha) AS documento_fecha, "
+            + "    CASE WHEN l.id IS NOT NULL THEN CONCAT('Lote de producción · ', p.nombre) WHEN s.id IS NOT NULL THEN CONCAT('Retiro de insumo · ', s.tipo) ELSE m.referencia END AS referencia, "
             + "    u.nombre AS usuario_nombre, m.motivo "
             + "  FROM movimiento_insumo m "
+            + "  LEFT JOIN salida_inventario s ON s.id = m.salida_id "
             + "  LEFT JOIN lote_produccion l ON l.id = m.lote_produccion_id "
             + "  LEFT JOIN producto p ON p.id = l.producto_id "
             + "  LEFT JOIN usuario u ON u.id = m.usuario_id "

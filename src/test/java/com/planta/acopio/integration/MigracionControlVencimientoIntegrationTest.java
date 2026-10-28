@@ -29,7 +29,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 class MigracionControlVencimientoIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+    static PostgreSQLContainer<?> postgres = PostgresDePrueba.contenedor()
             .withDatabaseName("acopio_lechero_migracion_vencimiento_test")
             .withUsername("acopio")
             .withPassword("acopio");
@@ -88,7 +88,7 @@ class MigracionControlVencimientoIntegrationTest {
         assertThat(antes.movimientos()).isEqualTo(3);
         assertThat(antes.suma()).isEqualTo(37);
 
-        Flyway.configure().dataSource(url, user, pass).locations("classpath:db/migration").load().migrate();
+        Flyway.configure().dataSource(url, user, pass).locations("classpath:db/migration").target("21").load().migrate();
 
         try (Connection c = DriverManager.getConnection(url, user, pass)) {
             Huella despues = huella(c);

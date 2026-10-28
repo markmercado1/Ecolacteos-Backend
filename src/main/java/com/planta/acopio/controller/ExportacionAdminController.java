@@ -99,7 +99,7 @@ public class ExportacionAdminController {
     public ResponseEntity<Resource> preciosPresentacion(
             @Parameter(description = "Filtrar por familia") @RequestParam(required = false) UUID familiaId,
             @Parameter(description = "Producto o presentación") @RequestParam(required = false) String busqueda) {
-        return RespuestaExcel.de(excel.exportar("precios-presentacion", "Precios", ColumnasExportacion.PRECIOS_PRESENTACION,
+        return RespuestaExcel.de(excel.exportar("precios-presentacion", "Precios", ColumnasExportacion.preciosPresentacion(precioQuesoService.tiposDelCatalogo()),
                 FuentePaginada.deRespuesta(pagina -> precioQuesoService.listarPaginado(familiaId, busqueda, pagina))));
     }
 
