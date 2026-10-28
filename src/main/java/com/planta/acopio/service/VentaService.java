@@ -73,11 +73,15 @@ public class VentaService {
     private final ConfiguracionIgvService igvService;
     private final CompradorService compradorService;
 
+    private final TipoPrecioService tipoPrecioService;
+
     public VentaService(VentaRepository repository, VentaDetalleRepository detalleRepository,
                          PresentacionRepository presentacionRepository, UsuarioRepository usuarioRepository,
                          EntityManager entityManager, PrecioQuesoService precioQuesoService,
                          InventarioService inventarioService, ReservaService reservaService,
-                         ConfiguracionIgvService igvService, CompradorService compradorService) {
+                         ConfiguracionIgvService igvService, CompradorService compradorService,
+                         TipoPrecioService tipoPrecioService) {
+        this.tipoPrecioService = tipoPrecioService;
         this.repository = repository;
         this.detalleRepository = detalleRepository;
         this.presentacionRepository = presentacionRepository;
@@ -137,6 +141,7 @@ public class VentaService {
         }
 
         TipoClienteVenta modalidad = TipoClienteVenta.valueOf(tipoClienteStr);
+        tipoPrecioService.exigirActivo(modalidad); // un tipo desactivado no vende; el reintento idempotente de arriba ya devolvio lo registrado
 
         // Fase 4: retiro de una reserva. La reserva se bloquea y se pasa a RETIRADA ANTES de validar el stock: asi sus
         // unidades dejan de estar comprometidas y la venta solo se evalua contra las DEMAS reservas. Si algo falla mas

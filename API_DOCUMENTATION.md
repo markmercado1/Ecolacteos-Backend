@@ -11,6 +11,14 @@ Esta actualización prevalece sobre las referencias históricas de este document
 - No existe fecha de vencimiento/lote de ingreso para insumos: solo retiro manual justificado, sin detección automática ni historia inventada. Productos sin control admiten deterioro/otra, no vencimiento sin evidencia.
 - Migración comprobada en PostgreSQL temporal; no aplicada a una base habitual ni a producción. Sin integración ni despliegue automático.
 
+## Actualización 2026-10-27 — tipos de precio administrables, etapa 1 (V37)
+
+- `GET /api/tipos-precio?soloActivos=` (VENTAS, ADMIN) → `[{codigo, nombre, descripcion, activo, protegido, ultimoCambio: {activo, motivo, usuarioNombre, creadoEn}|null}]`. Con `soloActivos=true` solo los que se pueden usar en operaciones nuevas.
+- `PUT /api/tipos-precio/{codigo}/estado` (ADMIN) `{activo, motivo}` → el tipo. Motivo obligatorio; PUBLICO es `protegido` (400 al desactivarlo: catálogo público y reservas dependen de él); repetir el estado: 409; código desconocido: 404.
+- Un tipo desactivado se **rechaza (400)** en precios nuevos (`POST` de precio por presentación) y ventas nuevas (`POST /api/ventas...`); el reintento idempotente de una venta ya registrada y toda consulta histórica no cambian. No se modifica ningún precio, cliente ni venta existente.
+- V37 (aditiva): `tipo_precio` (MAYORISTA, PROVEEDOR, PUBLICO activos) y `cambio_tipo_precio` (quién, cuándo y por qué). `precio_presentacion`, `venta` y `cliente` no se tocan; sus CHECK siguen igual.
+- **Pendiente (etapa 2):** crear tipos nuevos exige pasar `TipoClienteVenta` de enum a texto con clave foránea a `tipo_precio` en `precio_presentacion.modalidad`, `precio_queso.modalidad` y `venta.tipo_cliente`, definir cómo se comporta un tipo nuevo en `CompradorService.validarParaCanal`, y hacer dinámicas las columnas de la tabla de precios y de su Excel.
+
 # API_DOCUMENTATION.md — Backend EcoLácteos v1
 
 Guía rápida para el equipo de frontend (Angular/Flutter). El detalle exacto de cada

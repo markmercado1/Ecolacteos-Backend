@@ -48,7 +48,7 @@ class PrecioQuesoServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PrecioQuesoService(repository, presentacionRepository);
+        service = new PrecioQuesoService(repository, presentacionRepository, org.mockito.Mockito.mock(TipoPrecioService.class));
     }
 
     private Producto yogurt() {

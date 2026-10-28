@@ -38,7 +38,11 @@ public class PrecioQuesoService {
     private final PrecioQuesoRepository repository;
     private final PresentacionRepository presentacionRepository;
 
-    public PrecioQuesoService(PrecioQuesoRepository repository, PresentacionRepository presentacionRepository) {
+    private final TipoPrecioService tipoPrecioService;
+
+    public PrecioQuesoService(PrecioQuesoRepository repository, PresentacionRepository presentacionRepository,
+                              TipoPrecioService tipoPrecioService) {
+        this.tipoPrecioService = tipoPrecioService;
         this.repository = repository;
         this.presentacionRepository = presentacionRepository;
     }
@@ -48,6 +52,7 @@ public class PrecioQuesoService {
         Presentacion presentacion = presentacionRepository.findById(dto.presentacionId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Presentacion no encontrada: " + dto.presentacionId()));
         TipoClienteVenta modalidad = TipoClienteVenta.valueOf(dto.modalidad());
+        tipoPrecioService.exigirActivo(modalidad); // los precios nuevos solo para tipos activos; los ya registrados no cambian
 
         if (repository.existsByPresentacionIdAndModalidadAndVigenteDesde(presentacion.getId(), modalidad, dto.vigenteDesde())) {
             throw new ConflictoNegocioException("Ya existe un precio de " + presentacion.getNombre() + " para " + modalidad

@@ -76,7 +76,7 @@ class VentaServiceTest {
     @BeforeEach
     void setUp() {
         service = new VentaService(repository, detalleRepository, presentacionRepository, usuarioRepository,
-                entityManager, precioQuesoService, inventarioService, reservaService, igvService, compradorService);
+                entityManager, precioQuesoService, inventarioService, reservaService, igvService, compradorService, org.mockito.Mockito.mock(TipoPrecioService.class));
     }
 
     private Producto productoActivo() {
