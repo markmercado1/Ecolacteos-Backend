@@ -24,5 +24,4 @@ public interface HistorialZonaRepository extends JpaRepository<HistorialZona, UU
            "AND h.inicioEn <= :momento AND (h.finEn IS NULL OR :momento < h.finEn)")
     List<HistorialZona> periodosValidosEn(@Param("proveedorId") UUID proveedorId, @Param("momento") LocalDateTime momento);
 
-    List<HistorialZona> findByRequiereRevisionTrueOrderByProveedorNombreAscInicioEnAsc();
 }

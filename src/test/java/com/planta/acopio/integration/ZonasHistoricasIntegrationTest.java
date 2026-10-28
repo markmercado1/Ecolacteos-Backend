@@ -291,7 +291,7 @@ class ZonasHistoricasIntegrationTest {
     }
 
     @Test
-    void elInformeDeRevisionListaLoPendienteYSoloLoVeUnAdmin() throws Exception {
+    void retirarRevisionNoEliminaHistoriaNiEntregasSinZona() throws Exception {
         String admin = token("admin@planta.com", "Admin1234");
         Usuario acopiador = usuario("ACOPIADOR");
         Unidad unidad = new Unidad();
@@ -309,28 +309,14 @@ class ZonasHistoricasIntegrationTest {
         UUID sinZona = registrar(proveedorId, unidad.getId(), LocalDateTime.now().minusDays(25));
         SecurityContextHolder.clearContext();
 
-        MvcResult r = mvc.perform(get("/api/admin/zonas/revision").header("Authorization", admin)).andExpect(status().isOk()).andReturn();
-        JsonNode informe = json.readTree(r.getResponse().getContentAsString());
-        assertThat(informe.get("totalEntregasSinZona").asLong()).isGreaterThanOrEqualTo(1);
-        boolean periodoListado = false, entregaListada = false;
-        for (JsonNode p : informe.get("periodos")) {
-            periodoListado |= p.get("proveedorId").asText().equals(proveedorId.toString()) && p.get("nota").asText().contains("invertido");
-        }
-        for (JsonNode e : informe.get("entregasSinZona")) {
-            if (e.get("registroId").asText().equals(sinZona.toString())) {
-                entregaListada = true;
-                assertThat(e.get("motivo").asText()).isEqualTo("SIN_PERIODO");
-            }
-        }
-        assertThat(periodoListado).as("el periodo invertido aparece en el informe").isTrue();
-        assertThat(entregaListada).as("la entrega sin zona aparece en el informe").isTrue();
+        // Ya no hay endpoint de revisión: el CRUD de zonas rechaza "revision" como UUID.
+        mvc.perform(get("/api/admin/zonas/revision").header("Authorization", admin))
+                .andExpect(status().isBadRequest());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM historial_zona WHERE proveedor_id = ? AND requiere_revision", Integer.class, proveedorId))
+                .isGreaterThanOrEqualTo(1);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM registro_acopio WHERE id = ?", Integer.class, sinZona)).isEqualTo(1);
+        assertThat(zonaDeEntrega(sinZona)).isNull();
 
-        // solo ADMIN: un acopiador y recepcion reciben 403; sin token, 401/403
-        List<String> tokensSinPermiso = List.of(token(acopiador.getEmail(), "Clave1234"), tokenDeRol("RECEPCION"), tokenDeRol("VENTAS"));
-        for (String token : tokensSinPermiso) {
-            mvc.perform(get("/api/admin/zonas/revision").header("Authorization", token)).andExpect(status().isForbidden());
-        }
-        assertThat(mvc.perform(get("/api/admin/zonas/revision")).andReturn().getResponse().getStatus()).isIn(401, 403);
     }
 
     private void periodo(UUID proveedorId, Zona zona, LocalDateTime inicio, LocalDateTime fin) {

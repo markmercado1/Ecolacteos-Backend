@@ -62,7 +62,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class ProduccionLecheConcurrenciaIdempotenciaIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+    static PostgreSQLContainer<?> postgres = PostgresDePrueba.contenedor()
             .withDatabaseName("acopio_lechero_test")
             .withUsername("acopio")
             .withPassword("acopio");

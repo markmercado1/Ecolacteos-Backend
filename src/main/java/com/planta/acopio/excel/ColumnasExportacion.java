@@ -9,7 +9,6 @@ import com.planta.acopio.dto.DetalleVentaResponse;
 import com.planta.acopio.dto.FamiliaResponse;
 import com.planta.acopio.dto.FilaPrecioPresentacionResponse;
 import com.planta.acopio.dto.FilaStockResponse;
-import com.planta.acopio.dto.InformeProduccionDiarioResponse;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.dto.JornadaBandejaResponse;
 import com.planta.acopio.dto.LoteProduccionResponse;
@@ -205,18 +204,6 @@ public final class ColumnasExportacion {
         return detalles.stream().map(d -> d.presentacionNombre() + " x " + d.cantidadObtenida()).collect(Collectors.joining("; "));
     }
 
-    public static final List<ColumnaExcel<InformeProduccionDiarioResponse>> INFORMES_PRODUCCION = List.of(
-            fecha("Fecha", InformeProduccionDiarioResponse::fecha),
-            entero("Quesos diarios", InformeProduccionDiarioResponse::quesosDiarios),
-            entero("Quesos reparados", InformeProduccionDiarioResponse::quesosReparados),
-            entero("Quesos de recorte", InformeProduccionDiarioResponse::quesosDeRecorte),
-            entero("Total de quesos", InformeProduccionDiarioResponse::totalQuesos),
-            decimal("Recorte (kg)", InformeProduccionDiarioResponse::recorteEnKilos),
-            texto("Responsable", 26, InformeProduccionDiarioResponse::responsableNombre),
-            fechaHora("Registrado", InformeProduccionDiarioResponse::creadoEn),
-            texto("Actualizado por", 26, InformeProduccionDiarioResponse::actualizadoPorNombre),
-            fechaHora("Actualizado", InformeProduccionDiarioResponse::actualizadoEn)
-    );
 
     public static final List<ColumnaExcel<FilaStockResponse>> STOCK = List.of(
             texto("Familia", 20, FilaStockResponse::familiaNombre),

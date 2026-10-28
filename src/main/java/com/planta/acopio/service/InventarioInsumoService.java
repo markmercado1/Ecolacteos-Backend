@@ -1,5 +1,6 @@
 package com.planta.acopio.service;
 
+import com.planta.acopio.entity.SalidaInventario;
 import com.planta.acopio.dto.AjusteInsumoRequest;
 import com.planta.acopio.dto.IngresoInsumoRequest;
 import com.planta.acopio.dto.InsumoResponse;
@@ -127,6 +128,21 @@ public class InventarioInsumoService {
         MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.SALDO_INICIAL, cantidad, usuarioAutenticado());
         m.setMotivo("Stock inicial al crear el insumo");
         movimientoRepository.save(m);
+    }
+
+    /** Retiro manual sobre el mismo libro, dentro de la transacción de SalidaInventarioService. */
+    public UUID registrarRetiro(SalidaInventario salida) {
+        UUID id = salida.getInsumo().getId();
+        BigDecimal anterior = bloquearStock(id);
+        if (salida.getCantidad().compareTo(anterior) > 0) {
+            throw new ValidacionNegocioException("Stock insuficiente para registrar la salida del insumo.");
+        }
+        insumoRepository.fijarStock(id, anterior.subtract(salida.getCantidad()));
+        MovimientoInsumo m = nuevoMovimiento(salida.getInsumo(),
+                TipoMovimientoInsumo.valueOf("SALIDA_" + salida.getTipo().name()), salida.getCantidad().negate(), salida.getUsuario());
+        m.setMotivo(salida.getMotivo());
+        m.setSalida(salida);
+        return movimientoRepository.save(m).getId();
     }
 
     private Insumo buscar(UUID id) {

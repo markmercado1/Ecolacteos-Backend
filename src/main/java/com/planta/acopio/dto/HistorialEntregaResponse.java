@@ -13,7 +13,7 @@ public record HistorialEntregaResponse(
     BigDecimal litrosOriginales,
     BigDecimal litrosEfectivos,
     boolean corregida,
-    // Zona que tenia el proveedor cuando entrego; nula si el sistema no pudo determinarla (ver la pantalla de revision de zonas).
+    // Zona que tenia el proveedor cuando entrego; nula si el sistema no pudo determinarla.
     String zonaNombre,
     CalidadEntrega calidad,
     LiquidacionEntrega liquidacion

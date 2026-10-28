@@ -120,7 +120,7 @@ class DocumentosProveedorIntegrationTest {
     }
 
     @Test
-    void unDniAnteriorFueraDeFormatoSeConservaAlEditarYSeInformaEnLaRevisionSinCorregirse() throws Exception {
+    void unDniAnteriorSeConservaAlEditarAunqueLaRevisionFueRetirada() throws Exception {
         UUID id = UUID.randomUUID();
         String dniViejo = "9" + dni.substring(1, 6); // 6 digitos, cargado por fuera del sistema
         jdbc.update("INSERT INTO proveedor (id, nombre, dni) VALUES (?, ?, ?)", id, "Proveedor Antiguo " + dni, dniViejo);
@@ -130,21 +130,9 @@ class DocumentosProveedorIntegrationTest {
                 .andExpect(status().isOk());
         assertThat(jdbc.queryForObject("SELECT dni FROM proveedor WHERE id = ?", String.class, id)).isEqualTo(dniViejo);
 
-        MvcResult r = mvc.perform(get("/api/admin/proveedores/revision-documentos").header("Authorization", admin)).andExpect(status().isOk()).andReturn();
-        JsonNode informe = json.readTree(r.getResponse().getContentAsString());
-        assertThat(informe.get("totalProveedores").asLong()).isPositive();
-        boolean encontrado = false;
-        for (JsonNode o : informe.get("observaciones")) {
-            if (o.get("proveedorId").asText().equals(id.toString())) {
-                assertThat(o.get("codigo").asText()).isEqualTo("DNI_FORMATO");
-                encontrado = true;
-            }
-        }
-        assertThat(encontrado).isTrue();
+        mvc.perform(get("/api/admin/proveedores/revision-documentos").header("Authorization", admin)).andExpect(status().isNotFound());
         assertThat(jdbc.queryForObject("SELECT dni FROM proveedor WHERE id = ?", String.class, id)).isEqualTo(dniViejo);
 
-        String recepcion = token(usuario("RECEPCION").getEmail(), "Clave1234");
-        mvc.perform(get("/api/admin/proveedores/revision-documentos").header("Authorization", recepcion)).andExpect(status().isForbidden());
     }
 
     @Test

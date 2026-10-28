@@ -57,7 +57,7 @@ public class RegistroAcopio {
     private Jornada jornada;
 
     // Zona del proveedor EN EL MOMENTO de la entrega (Fase A, V27). NULL = no se pudo determinar (entrega anterior a
-    // la historia de zonas o en un dia de cambio de zona sin hora registrada): la lista el informe de revision de zonas.
+    // la historia de zonas o en un dia de cambio de zona sin hora registrada). Se conserva sin inventar una zona.
     @ManyToOne
     @JoinColumn(name = "zona_id", updatable = false)
     private Zona zona;

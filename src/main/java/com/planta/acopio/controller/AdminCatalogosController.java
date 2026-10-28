@@ -455,7 +455,7 @@ public class AdminCatalogosController {
         return ResponseEntity.ok(presentacionService.reactivar(productoId, presentacionId));
     }
 
-    // --- Insumos (produccion diaria: cuajo, sal, etc.) ---
+    // --- Insumos (cuajo, sal, etc.) ---
     @Operation(summary = "Crear insumo", description = ROL_ADMIN, tags = "Insumos")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Insumo creado", content = @Content(schema = @Schema(implementation = InsumoResponse.class))),

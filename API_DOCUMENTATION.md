@@ -1,3 +1,16 @@
+## Actualización 2026-10-27 — salidas y retirada de módulos (V36)
+
+Esta actualización prevalece sobre las referencias históricas de este documento.
+
+- Nuevos `POST /api/inventario/presentaciones/{id}/salidas` y `POST /api/inventario/insumos/{id}/salidas`, solo ADMIN, HTTP 200.
+- JSON: `uuidCliente` (UUID obligatorio), `cantidad` positiva (producto entero, insumo hasta 2 decimales), `tipo` (`VENCIMIENTO`, `DETERIORO`, `OTRA`), `motivo` no vacío hasta 500 caracteres; `origenLote` (`LOTE` o `REGULARIZACION`) y `loteId` juntos cuando la presentación controla vencimiento. Insumos no aceptan lotes. Vencimiento de producto exige lote efectivamente vencido según ReglaVencimiento.
+- Respuesta: `id`, `movimientoId`, `cantidad`, `tipo`, `motivo`, `origenLote`, `loteId`, `fechaVencimiento`, `usuarioNombre`, `creadoEn`. Reintento con la misma clave/datos devuelve lo registrado sin descontar otra vez; clave con otros datos: 409. Validación/saldo: 400; recurso inexistente: 404; rol insuficiente: 403.
+- V36 añade `salida_inventario` (documento e idempotencia), `salida_id` a los libros existentes y restricciones/índices únicos. Tipos Kardex `SALIDA_VENCIMIENTO`, `SALIDA_DETERIORO`, `SALIDA_OTRA`; documento SALIDA con referencia, actor y motivo. Producto reparte el retiro al lote existente; insumo mantiene stock = suma del libro. No hay segundo Kardex.
+- Eliminados `/api/informes-produccion` y subrutas, `/api/exportaciones/informes-produccion`, `/api/admin/proveedores/revision-documentos`, `/api/admin/zonas/revision`. La última ruta cae en el CRUD de zona por id y devuelve 400 por UUID inválido. Se conserva el historial SQL de informes, documentos, zonas y acopios.
+- Sin cambios en contratos/reglas de `/api/pagos` (liquidaciones de leche) y `/api/pagos-proveedor` (desembolsos y aplicaciones), ni CRUD de insumos y recetas.
+- No existe fecha de vencimiento/lote de ingreso para insumos: solo retiro manual justificado, sin detección automática ni historia inventada. Productos sin control admiten deterioro/otra, no vencimiento sin evidencia.
+- Migración comprobada en PostgreSQL temporal; no aplicada a una base habitual ni a producción. Sin integración ni despliegue automático.
+
 # API_DOCUMENTATION.md — Backend EcoLácteos v1
 
 Guía rápida para el equipo de frontend (Angular/Flutter). El detalle exacto de cada

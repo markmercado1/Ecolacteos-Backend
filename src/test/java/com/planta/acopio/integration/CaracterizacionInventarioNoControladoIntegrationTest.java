@@ -70,7 +70,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class CaracterizacionInventarioNoControladoIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+    static PostgreSQLContainer<?> postgres = PostgresDePrueba.contenedor()
             .withDatabaseName("acopio_lechero_test")
             .withUsername("acopio")
             .withPassword("acopio");
@@ -85,7 +85,7 @@ class CaracterizacionInventarioNoControladoIntegrationTest {
     // Valores de referencia obtenidos con el codigo previo a la Fase 1 (ver comentario de clase).
     private static final String ESPERADO_ESCENARIO = 
             "libro=ENTRADA_PRODUCCION:9,SALIDA_VENTA:-2,SALIDA_VENTA:-1,AJUSTE:-1,AJUSTE:3 stock=8 kardex[0+12-4=8] ENTRADA_PRODUCCION|e=9|s=null|saldo=9|LOTE|Lote de producción|null;SALIDA_VENTA|e=null|s=2|saldo=7|VENTA|Venta · PUBLICO|null;SALIDA_VENTA|e=null|s=1|saldo=6|VENTA|Venta · PUBLICO|null;AJUSTE|e=null|s=1|saldo=5|AJUSTE|Conteo físico: 6 → 5|Rotura;AJUSTE|e=3|s=null|saldo=8|AJUSTE|Conteo físico: 5 → 8|Hallazgo";
-    private static final String ESPERADO_HUELLA_TABLA = "063a1c91c30c5e137e976d7e923b9a8b";
+    private static final String ESPERADO_HUELLA_TABLA = "190c4cfea16cc52bb7a4a60b42f411a6";
 
     @Autowired private ConciliacionService conciliacionService;
     @Autowired private RecetaService recetaService;
@@ -198,6 +198,7 @@ class CaracterizacionInventarioNoControladoIntegrationTest {
     @Test
     void unProductoSinControlSeComportaIgualQueAntesDeLaFase1() {
         String escenario = ejecutarEscenario();
+        // V36 amplía la definición para las salidas; el escenario anterior debe seguir idéntico.
         String huella = huellaDeLaTabla();
         System.out.println("CARAC_ESCENARIO=" + escenario);
         System.out.println("CARAC_HUELLA=" + huella);

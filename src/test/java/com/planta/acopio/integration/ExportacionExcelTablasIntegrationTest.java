@@ -4,7 +4,6 @@ import com.planta.acopio.dto.UnidadResponse;
 import com.planta.acopio.entity.EstadoLote;
 import com.planta.acopio.entity.EstadoReserva;
 import com.planta.acopio.entity.Familia;
-import com.planta.acopio.entity.InformeProduccionDiario;
 import com.planta.acopio.entity.LoteProduccion;
 import com.planta.acopio.entity.PrecioLitro;
 import com.planta.acopio.entity.Presentacion;
@@ -20,7 +19,6 @@ import com.planta.acopio.excel.ExportacionExcelService;
 import com.planta.acopio.excel.FuentePaginada;
 import com.planta.acopio.excel.LimitesExcel;
 import com.planta.acopio.repository.FamiliaRepository;
-import com.planta.acopio.repository.InformeProduccionDiarioRepository;
 import com.planta.acopio.repository.LoteProduccionRepository;
 import com.planta.acopio.repository.PrecioLitroRepository;
 import com.planta.acopio.repository.PresentacionRepository;
@@ -31,7 +29,6 @@ import com.planta.acopio.repository.RolRepository;
 import com.planta.acopio.repository.UnidadRepository;
 import com.planta.acopio.repository.UsuarioRepository;
 import com.planta.acopio.service.ConciliacionService;
-import com.planta.acopio.service.InformeProduccionDiarioService;
 import com.planta.acopio.service.InventarioService;
 import com.planta.acopio.service.LoteProduccionService;
 import com.planta.acopio.service.PrecioLitroService;
@@ -82,7 +79,6 @@ class ExportacionExcelTablasIntegrationTest {
     @Autowired private ReservaService reservaService;
     @Autowired private ConciliacionService conciliacionService;
     @Autowired private LoteProduccionService loteProduccionService;
-    @Autowired private InformeProduccionDiarioService informeService;
     @Autowired private InventarioService inventarioService;
     @Autowired private UsuarioService usuarioService;
     @Autowired private PrecioQuesoService precioQuesoService;
@@ -94,7 +90,6 @@ class ExportacionExcelTablasIntegrationTest {
     @Autowired private ReservaRepository reservaRepository;
     @Autowired private RecepcionPlantaRepository recepcionRepository;
     @Autowired private LoteProduccionRepository loteRepository;
-    @Autowired private InformeProduccionDiarioRepository informeRepository;
     @Autowired private FamiliaRepository familiaRepository;
     @Autowired private ProductoRepository productoRepository;
     @Autowired private PresentacionRepository presentacionRepository;
@@ -211,7 +206,7 @@ class ExportacionExcelTablasIntegrationTest {
     }
 
     @Test
-    void lotesEInformesDeProduccion() throws Exception {
+    void lotesDeProduccion() throws Exception {
         Presentacion p = presentacion("Queso Paín " + s, "Pieza " + s);
         for (int i = 0; i < 9; i++) {
             LoteProduccion l = new LoteProduccion();
@@ -231,19 +226,6 @@ class ExportacionExcelTablasIntegrationTest {
         assertThat(texto(lotes, 1)).containsOnly("Queso Paín " + s);
         assertThat(texto(lotes, 2)).containsOnly("EN_PRODUCCION");
 
-        for (int i = 0; i < 7; i++) {
-            InformeProduccionDiario inf = new InformeProduccionDiario();
-            inf.setUuidCliente(UUID.randomUUID().toString());
-            inf.setFecha(LocalDate.of(2031, 9, 1).plusDays(i));
-            inf.setQuesosDiarios(10 + i);
-            inf.setResponsable(responsable);
-            informeRepository.save(inf);
-        }
-        Sheet informes = abrir(excel.exportar("informes", "Informes", ColumnasExportacion.INFORMES_PRODUCCION,
-                p2 -> informeService.buscar(LocalDate.of(2031, 9, 1), LocalDate.of(2031, 9, 30), "quispe " + s, p2)));
-        assertThat(informes.getLastRowNum()).isEqualTo(7);
-        assertThat(informes.getRow(1).getCell(1).getNumericCellValue()).isEqualTo(16.0); // fecha descendente
-        assertThat(texto(informes, 6)).containsOnly("Niña Quispe " + s);
     }
 
     @Test

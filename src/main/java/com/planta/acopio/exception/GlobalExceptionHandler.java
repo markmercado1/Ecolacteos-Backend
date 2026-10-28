@@ -131,6 +131,11 @@ public class GlobalExceptionHandler {
         return construir(HttpStatus.UNAUTHORIZED, ex.getMessage());
     }
 
+    @ExceptionHandler(org.springframework.web.servlet.resource.NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponse> handleRutaInexistente(org.springframework.web.servlet.resource.NoResourceFoundException ex) {
+        return construir(HttpStatus.NOT_FOUND, "Recurso no encontrado");
+    }
+
     // Fallback: no manejada explicitamente -> 500. Se registra con detalle
     // para diagnostico (no se expone el stacktrace al cliente).
     @ExceptionHandler(Exception.class)

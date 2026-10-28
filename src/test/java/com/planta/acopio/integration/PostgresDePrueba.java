@@ -27,6 +27,22 @@ final class PostgresDePrueba {
     private PostgresDePrueba() {
     }
 
+    /** Mantiene el ciclo de vida Testcontainers y permite el mismo PostgreSQL temporal que las pruebas nuevas. */
+    static PostgreSQLContainer<?> contenedor() {
+        if (ADMIN_URL == null || ADMIN_URL.isBlank()) return new PostgreSQLContainer<>("postgres:15-alpine");
+        return new Temporal();
+    }
+
+    private static final class Temporal extends PostgreSQLContainer<Temporal> {
+        private String[] conexion;
+        private Temporal() { super("postgres:15-alpine"); }
+        @Override public void start() { if (conexion == null) conexion = baseNueva(); }
+        @Override public void stop() { /* El ejecutor elimina el servidor temporal completo al terminar. */ }
+        @Override public String getJdbcUrl() { start(); return conexion[0]; }
+        @Override public String getUsername() { start(); return conexion[1]; }
+        @Override public String getPassword() { start(); return conexion[2]; }
+    }
+
     /** Contenedor compartido por todas las clases que lo piden; solo se crea si hace falta. */
     private static final class Contenedor {
         static final PostgreSQLContainer<?> POSTGRES = new PostgreSQLContainer<>("postgres:15-alpine")

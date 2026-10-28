@@ -42,7 +42,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 class BusquedaYOrdenTablasIntegrationTest {
 
     @Container
-    static PostgreSQLContainer<?> postgres = new PostgreSQLContainer<>("postgres:15-alpine")
+    static PostgreSQLContainer<?> postgres = PostgresDePrueba.contenedor()
             .withDatabaseName("acopio_lechero_test")
             .withUsername("acopio")
             .withPassword("acopio");
@@ -70,7 +70,6 @@ class BusquedaYOrdenTablasIntegrationTest {
     @Autowired private PresentacionRepository presentacionRepository;
     @Autowired private LoteProduccionRepository loteRepository;
     @Autowired private RecepcionPlantaRepository recepcionRepository;
-    @Autowired private InformeProduccionDiarioRepository informeRepository;
     @Autowired private ComunicadoRepository comunicadoRepository;
     @Autowired private ReservaRepository reservaRepository;
 
@@ -258,15 +257,6 @@ class BusquedaYOrdenTablasIntegrationTest {
         assertThat(recepcionRepository.buscarConFiltros(unidadA.getId(), null, BusquedaTexto.patronLike(s), PAGINA).getTotalElements()).isEqualTo(1);
     }
 
-    @Test
-    void informesBuscanPorResponsable() {
-        InformeProduccionDiario i1 = informeRepository.save(informe(ana, LocalDate.of(2031, 9, 1)));
-        InformeProduccionDiario i2 = informeRepository.save(informe(nina, LocalDate.of(2031, 9, 2)));
-        assertThat(informeRepository.buscarConFiltros(null, null, BusquedaTexto.patronLike("PEREZ " + s), PAGINA).getContent())
-                .extracting(InformeProduccionDiario::getId).containsExactly(i1.getId());
-        assertThat(informeRepository.buscarConFiltros(LocalDate.of(2031, 9, 1), LocalDate.of(2031, 9, 30), BusquedaTexto.patronLike(s), PAGINA).getContent())
-                .extracting(InformeProduccionDiario::getId).containsExactly(i2.getId(), i1.getId()); // fecha descendente
-    }
 
     // ------------------------------------------------------------------------------- comunicados, reservas
 
@@ -423,14 +413,6 @@ class BusquedaYOrdenTablasIntegrationTest {
         return r;
     }
 
-    private InformeProduccionDiario informe(Usuario responsable, LocalDate fecha) {
-        InformeProduccionDiario i = new InformeProduccionDiario();
-        i.setUuidCliente(UUID.randomUUID().toString());
-        i.setFecha(fecha);
-        i.setQuesosDiarios(10);
-        i.setResponsable(responsable);
-        return i;
-    }
 
     private Comunicado comunicado(String mensaje, Set<Zona> zonas, LocalDateTime fecha) {
         Comunicado c = new Comunicado();
