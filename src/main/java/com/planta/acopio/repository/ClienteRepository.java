@@ -35,7 +35,7 @@ public interface ClienteRepository extends JpaRepository<Cliente, UUID> {
     String FILTROS =
             "FROM cliente c WHERE c.fusionado_en_id IS NULL "
             + "AND (CAST(:activo AS boolean) IS NULL OR c.activo = CAST(:activo AS boolean)) "
-            + "AND (CAST(:mayorista AS boolean) IS NULL OR c.mayorista = CAST(:mayorista AS boolean)) "
+            + "AND (CAST(:mayorista AS boolean) IS NULL OR CAST(:mayorista AS boolean) = EXISTS (SELECT 1 FROM cliente_tipo_precio h WHERE h.cliente_id = c.id AND h.tipo_codigo = 'MAYORISTA')) "
             + "AND (CAST(:conComercial AS boolean) IS NULL OR CAST(:conComercial AS boolean) = (COALESCE((SELECT cc.estado FROM cliente_consentimiento cc "
             + "     WHERE cc.cliente_id = c.id AND cc.finalidad = 'COMUNICACIONES_COMERCIALES' ORDER BY cc.registrado_en DESC, cc.id DESC LIMIT 1), '') = 'OTORGADO')) "
             + "AND (" + BusquedaTexto.SIN_TERMINO + " OR "

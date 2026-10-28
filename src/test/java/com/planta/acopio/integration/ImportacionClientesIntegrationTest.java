@@ -108,7 +108,7 @@ class ImportacionClientesIntegrationTest {
         UUID dos = jdbc.queryForObject("SELECT id FROM cliente WHERE nombre = ?", UUID.class, "Importada Dos " + sufijo);
         assertThat(jdbc.queryForObject("SELECT dni FROM cliente WHERE id = ?", String.class, uno)).isEqualTo(dni(1));
         assertThat(jdbc.queryForObject("SELECT canal_habitual FROM cliente WHERE id = ?", String.class, uno)).isEqualTo("PUBLICO");
-        assertThat(jdbc.queryForObject("SELECT mayorista FROM cliente WHERE id = ?", Boolean.class, dos)).isTrue();
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM cliente_tipo_precio WHERE cliente_id = ? AND tipo_codigo = 'MAYORISTA'", Integer.class, dos)).isEqualTo(1);
         assertThat(jdbc.queryForObject("SELECT canal_habitual FROM cliente WHERE id = ?", String.class, dos)).isEqualTo("MAYORISTA");
         assertThat(jdbc.queryForObject("SELECT telefono FROM cliente_telefono WHERE cliente_id = ?", String.class, dos)).isEqualTo("+51" + telefono(2));
         // constancia: registro para ambas; promociones SOLO para quien las autorizo, con sus medios y la forma declarada

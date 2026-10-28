@@ -287,15 +287,76 @@ class ClientesCompradoresIntegrationTest {
         JsonNode m = enviar(post("/api/clientes"), admin, conTipo(base, true, "Compra por mayor para su bodega", "MAYORISTA"), 201);
         assertThat(m.get("mayorista").asBoolean()).isTrue();
         assertThat(m.get("canalHabitual").asText()).isEqualTo("MAYORISTA");
-        assertThat(jdbc.queryForObject("SELECT mayorista_motivo FROM cliente WHERE id = ?", String.class, UUID.fromString(m.get("id").asText())))
-                .isEqualTo("Compra por mayor para su bodega");
+        assertThat(jdbc.queryForObject("SELECT motivo FROM cliente_tipo_precio WHERE cliente_id = ? AND tipo_codigo = 'MAYORISTA'", String.class,
+                UUID.fromString(m.get("id").asText()))).isEqualTo("Compra por mayor para su bodega");
         // la sugerencia lleva el canal que el panel propone; la venta MAYORISTA funciona sin pasos extra
         JsonNode sug = enviar(post("/api/compradores/sugerencias"), ventas, "{\"telefono\":\"" + telefono(21) + "\"}", 200);
         assertThat(sug.get(0).get("canalHabitual").asText()).isEqualTo("MAYORISTA");
         vender(ventas, "MAYORISTA", "{\"tipo\":\"CLIENTE\",\"id\":\"" + m.get("id").asText() + "\"}", 1, 201);
-        // al quitarle la condicion de mayorista, el canal propuesto vuelve a PUBLICO
+        // al quitarle la habilitacion NO se cambia en silencio el canal guardado: el panel pide elegir uno valido
         JsonNode quitado = enviar(put("/api/clientes/" + m.get("id").asText() + "/mayorista"), admin, "{\"mayorista\":false,\"motivo\":\"Ya no compra por mayor\"}", 200);
-        assertThat(quitado.get("canalHabitual").asText()).isEqualTo("PUBLICO");
+        assertThat(quitado.get("mayorista").asBoolean()).isFalse();
+        assertThat(quitado.get("canalHabitual").asText()).isEqualTo("MAYORISTA");
+        enviar(post("/api/ventas/carrito"), ventas, "{\"uuidCliente\":\"" + UUID.randomUUID() + "\",\"fecha\":\"" + hoy + "\",\"tipoCliente\":\"MAYORISTA\",\"detalles\":[{\"presentacionId\":\""
+                + queso.getId() + "\",\"cantidad\":1}],\"comprador\":{\"tipo\":\"CLIENTE\",\"id\":\"" + m.get("id").asText() + "\"}}", 400);   // el servidor tampoco lo permite
+    }
+
+    // ------------------------------------------------------------------ tipos de precio dinamicos (V39)
+
+    @Test
+    void unTipoNuevoSeCreaTienePrecioPropioSeHabilitaPorClienteYLoHistoricoNoCambia() throws Exception {
+        String codigo = "DIST" + sufijo.replaceAll("[^A-Za-z0-9]", "").toUpperCase();
+        codigo = codigo.substring(0, Math.min(codigo.length(), 12));
+        String c = codigo;
+        // crear: solo ADMIN, codigo normalizado y unico, nombre unico
+        enviar(post("/api/tipos-precio"), ventas, "{\"nombre\":\"Distribuidor " + sufijo + "\",\"codigo\":\"" + c + "\",\"reglaComprador\":\"CLIENTE_HABILITADO\",\"motivo\":\"Nuevo canal\"}", 403);
+        JsonNode creado = enviar(post("/api/tipos-precio"), admin, "{\"nombre\":\"Distribuidor " + sufijo + "\",\"codigo\":\"" + c.toLowerCase() + "\",\"descripcion\":\"Reventa\",\"reglaComprador\":\"CLIENTE_HABILITADO\",\"motivo\":\"Nuevo canal\"}", 201);
+        assertThat(creado.get("codigo").asText()).isEqualTo(c);
+        assertThat(creado.get("activo").asBoolean()).isTrue();
+        enviar(post("/api/tipos-precio"), admin, "{\"nombre\":\"Otro nombre " + sufijo + "\",\"codigo\":\"" + c + "\",\"reglaComprador\":\"CUALQUIERA\",\"motivo\":\"x\"}", 409);
+        enviar(post("/api/tipos-precio"), admin, "{\"nombre\":\"Distribuidor " + sufijo + "\",\"codigo\":\"OTRO" + sufijo.length() + "\",\"reglaComprador\":\"CUALQUIERA\",\"motivo\":\"x\"}", 409);
+        enviar(post("/api/tipos-precio"), admin, "{\"nombre\":\"Malo\",\"codigo\":\"1 MALO!\",\"reglaComprador\":\"CUALQUIERA\",\"motivo\":\"x\"}", 400);
+
+        // precio propio por tipo, sin tocar los demas; duplicado por presentacion+tipo+vigencia rechazado
+        String precio = "{\"presentacionId\":\"" + queso.getId() + "\",\"modalidad\":\"" + c + "\",\"precio\":7.50,\"vigenteDesde\":\"" + hoy.minusDays(1) + "\"}";
+        enviar(post("/api/admin/precios-queso"), admin, precio, 201);
+        enviar(post("/api/admin/precios-queso"), admin, precio, 409);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM precio_presentacion WHERE presentacion_id = ? AND modalidad = 'PUBLICO'", Integer.class, queso.getId())).isEqualTo(1);
+
+        // regla de comprador: exige la habilitacion de ESE tipo (la de mayorista no sirve)
+        JsonNode cliente = enviar(post("/api/clientes"), admin, conTipo(registro("Distribuidor cli " + sufijo, telefono(40), true, false), true, "Mayorista", "MAYORISTA"), 201);
+        String comprador = "{\"tipo\":\"CLIENTE\",\"id\":\"" + cliente.get("id").asText() + "\"}";
+        vender(ventas, c, comprador, 1, 400);
+        vender(ventas, c, null, 1, 400);
+        enviar(put("/api/clientes/" + cliente.get("id").asText() + "/tipos-precio/" + c), ventas, "{\"habilitado\":true,\"motivo\":\"x\"}", 403);
+        JsonNode habilitado = enviar(put("/api/clientes/" + cliente.get("id").asText() + "/tipos-precio/" + c), admin, "{\"habilitado\":true,\"motivo\":\"Distribuye en la zona\"}", 200);
+        assertThat(habilitado.get("tiposHabilitados").toString()).contains(c).contains("MAYORISTA");
+        JsonNode venta = vender(ventas, c, comprador, 2, 201);
+        assertThat(venta.get("total").decimalValue()).isEqualByComparingTo("15.00");   // 2 x 7.50: el precio de ESE tipo
+        enviar(put("/api/clientes/" + cliente.get("id").asText() + "/tipos-precio/PUBLICO"), admin, "{\"habilitado\":true,\"motivo\":\"x\"}", 400);   // PUBLICO no usa habilitaciones
+
+        // la fila de precios trae un resumen por cada tipo del catalogo
+        JsonNode filas = leerJson(admin, "/api/admin/precios-queso/presentaciones?size=50");
+        boolean visto = false;
+        for (JsonNode f : filas.get("contenido")) {
+            if (queso.getId().toString().equals(f.path("presentacionId").asText())) {
+                assertThat(f.get("porTipo").get(c).get("estado").asText()).isEqualTo("VIGENTE");
+                assertThat(f.get("porTipo").get(c).get("precio").decimalValue()).isEqualByComparingTo("7.50");
+                assertThat(f.get("publico").get("estado").asText()).isEqualTo("VIGENTE");
+                visto = true;
+            }
+        }
+        assertThat(visto).isTrue();
+
+        // editar el nombre no cambia el codigo ni la venta ya hecha; desactivar bloquea lo nuevo y conserva lo historico
+        enviar(put("/api/tipos-precio/" + c), admin, "{\"nombre\":\"Distribuidor mayor " + sufijo + "\",\"descripcion\":\"Reventa\",\"motivo\":\"Cambio de nombre\"}", 200);
+        enviar(put("/api/tipos-precio/" + c + "/estado"), admin, "{\"activo\":false,\"motivo\":\"Se pausa\"}", 200);
+        vender(ventas, c, comprador, 1, 400);
+        assertThat(jdbc.queryForObject("SELECT tipo_cliente FROM venta WHERE id = ?", String.class, UUID.fromString(venta.get("id").asText()))).isEqualTo(c);
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM cambio_tipo_precio WHERE codigo = ?", Integer.class, c)).isEqualTo(3);   // creacion, edicion y estado
+        enviar(post("/api/admin/precios-queso"), admin, precio.replace("7.50", "8.00").replace(hoy.minusDays(1).toString(), hoy.toString()), 400);   // tipo inactivo
+        // no se puede dejar a un cliente habitual de un tipo inactivo: el servidor lo rechaza al elegirlo de nuevo
+        enviar(put("/api/clientes/" + cliente.get("id").asText()), admin, "{\"nombre\":\"Distribuidor cli " + sufijo + "\",\"canalHabitual\":\"" + c + "\"}", 400);
     }
 
     @Test
@@ -418,6 +479,10 @@ class ClientesCompradoresIntegrationTest {
         String cuerpo = "{\"uuidCliente\":\"" + UUID.randomUUID() + "\",\"fecha\":\"" + hoy + "\",\"tipoCliente\":\"" + canal + "\",\"detalles\":[{\"presentacionId\":\""
                 + queso.getId() + "\",\"cantidad\":" + cantidad + "}]" + (comprador == null ? "" : ",\"comprador\":" + comprador) + "}";
         return enviar(post("/api/ventas/carrito"), token, cuerpo, estado);
+    }
+
+    private JsonNode leerJson(String token, String ruta) throws Exception {
+        return enviar(get(ruta), token, null, 200);
     }
 
     private JsonNode enviar(MockHttpServletRequestBuilder req, String token, String cuerpo, int estado) throws Exception {

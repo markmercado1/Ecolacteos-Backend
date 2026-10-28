@@ -5,7 +5,6 @@ import com.planta.acopio.entity.Familia;
 import com.planta.acopio.entity.PrecioQueso;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Producto;
-import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.entity.UnidadContenido;
 import com.planta.acopio.repository.PrecioQuesoRepository;
 import com.planta.acopio.repository.PresentacionRepository;
@@ -109,14 +108,14 @@ class CatalogoPublicoServiceTest {
     private PrecioQueso precio(Presentacion pr, String valor, LocalDate desde) {
         PrecioQueso p = new PrecioQueso();
         p.setPresentacion(pr);
-        p.setModalidad(TipoClienteVenta.PUBLICO);
+        p.setModalidad("PUBLICO");
         p.setPrecio(new BigDecimal(valor));
         p.setVigenteDesde(desde);
         return p;
     }
 
     private void precios(PrecioQueso... filas) {
-        when(precioRepository.findVigentesHasta(any(), eq(TipoClienteVenta.PUBLICO), eq(HOY))).thenReturn(List.of(filas));
+        when(precioRepository.findVigentesHasta(any(), eq("PUBLICO"), eq(HOY))).thenReturn(List.of(filas));
     }
 
     /** Fisico alto a proposito: la disponibilidad debe salir del vendible, no del fisico. */
@@ -172,7 +171,7 @@ class CatalogoPublicoServiceTest {
     void consultaElPrecioDeModalidadPublicoConLaFechaDeHoyEnLima() {
         service.obtener();
 
-        verify(precioRepository).findVigentesHasta(any(), eq(TipoClienteVenta.PUBLICO), eq(HOY));
+        verify(precioRepository).findVigentesHasta(any(), eq("PUBLICO"), eq(HOY));
     }
 
     @Test

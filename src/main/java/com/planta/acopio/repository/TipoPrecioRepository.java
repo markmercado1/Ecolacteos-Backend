@@ -10,4 +10,6 @@ public interface TipoPrecioRepository extends JpaRepository<TipoPrecio, String> 
     List<TipoPrecio> findAllByOrderByCodigoAsc();
 
     long countByActivoTrue();
+
+    boolean existsByNombreIgnoreCase(String nombre);
 }

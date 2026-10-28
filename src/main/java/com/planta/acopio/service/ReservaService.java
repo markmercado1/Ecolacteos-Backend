@@ -15,7 +15,7 @@ import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Reserva;
 import com.planta.acopio.entity.ReservaDetalle;
 import com.planta.acopio.entity.ReservaEvento;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.entity.TipoEventoReserva;
 import com.planta.acopio.entity.Usuario;
 import com.planta.acopio.exception.ConflictoNegocioException;
@@ -116,7 +116,7 @@ public class ReservaService {
 
     @Transactional
     public ReservaPublicaResponse crear(CrearReservaRequest dto) {
-        tipoPrecioService.exigirActivo(TipoClienteVenta.PUBLICO); // una reserva nueva usa el precio publico; las ya confirmadas se retiran igual
+        tipoPrecioService.exigirActivo(TipoPrecio.PUBLICO); // una reserva nueva usa el precio publico; las ya confirmadas se retiran igual
         ReservaParametros p = config.actuales();
         LocalDateTime ahora = regla.ahora();
         LocalDate hoy = ahora.toLocalDate();
@@ -176,7 +176,7 @@ public class ReservaService {
                         : "Solo hay " + disponible + " " + pr.getUnidadConteo() + " disponibles de '" + pr.getNombre()
                                 + "' para retirar el " + dto.fechaRetiro() + " (pediste " + l.cantidad() + ").");
             }
-            precioRepository.findVigente(pr.getId(), TipoClienteVenta.PUBLICO, hoy).ifPresent(x -> precios.put(pr.getId(), x.getPrecio()));
+            precioRepository.findVigente(pr.getId(), TipoPrecio.PUBLICO, hoy).ifPresent(x -> precios.put(pr.getId(), x.getPrecio()));
         }
 
         Reserva r = new Reserva();
@@ -287,7 +287,7 @@ public class ReservaService {
         List<ReservaDetalle> lineas = detalleRepository.findByReservaIdOrderByPresentacionId(id);
         boolean cambio = false;
         for (ReservaDetalle d : lineas) {
-            BigDecimal nuevo = precioRepository.findVigente(d.getPresentacion().getId(), TipoClienteVenta.PUBLICO, hoy)
+            BigDecimal nuevo = precioRepository.findVigente(d.getPresentacion().getId(), TipoPrecio.PUBLICO, hoy)
                     .map(PrecioQueso::getPrecio).orElse(null);
             if (!iguales(d.getPrecioUnitario(), nuevo)) {
                 d.setPrecioUnitario(nuevo);
@@ -351,7 +351,7 @@ public class ReservaService {
                 throw new ConflictoNegocioException("'" + d.getPresentacion().getNombre() + "' sigue con «Precio a confirmar»: configura su precio "
                         + "público, recotiza la reserva y registra la aceptación del cliente antes de confirmar.");
             }
-            BigDecimal vigente = precioRepository.findVigente(d.getPresentacion().getId(), TipoClienteVenta.PUBLICO, hoy)
+            BigDecimal vigente = precioRepository.findVigente(d.getPresentacion().getId(), TipoPrecio.PUBLICO, hoy)
                     .map(PrecioQueso::getPrecio).orElse(null);
             if (!iguales(d.getPrecioUnitario(), vigente)) {
                 throw new ConflictoNegocioException("El precio público de '" + d.getPresentacion().getNombre() + "' cambió desde la cotización: "

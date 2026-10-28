@@ -6,7 +6,7 @@ import com.planta.acopio.dto.PrecioModalidadResponse;
 import com.planta.acopio.dto.PrecioQuesoRequest;
 import com.planta.acopio.dto.PrecioQuesoResponse;
 import com.planta.acopio.entity.PrecioQueso;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
@@ -51,8 +51,8 @@ public class PrecioQuesoService {
     public PrecioQuesoResponse crear(PrecioQuesoRequest dto) {
         Presentacion presentacion = presentacionRepository.findById(dto.presentacionId())
                 .orElseThrow(() -> new RecursoNoEncontradoException("Presentacion no encontrada: " + dto.presentacionId()));
-        TipoClienteVenta modalidad = TipoClienteVenta.valueOf(dto.modalidad());
-        tipoPrecioService.exigirActivo(modalidad); // los precios nuevos solo para tipos activos; los ya registrados no cambian
+        // los precios nuevos solo para tipos activos que existen en el catalogo; los ya registrados no cambian
+        String modalidad = tipoPrecioService.exigirActivo(dto.modalidad()).getCodigo();
 
         if (repository.existsByPresentacionIdAndModalidadAndVigenteDesde(presentacion.getId(), modalidad, dto.vigenteDesde())) {
             throw new ConflictoNegocioException("Ya existe un precio de " + presentacion.getNombre() + " para " + modalidad
@@ -66,6 +66,11 @@ public class PrecioQuesoService {
         precio.setVigenteDesde(dto.vigenteDesde());
 
         return toResponse(repository.save(precio));
+    }
+
+    /** Tipos del catalogo (activos o no) para armar las columnas de la exportacion de precios. */
+    public List<com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse> tiposDelCatalogo() {
+        return tipoPrecioService.listar(false);
     }
 
     public List<PrecioQuesoResponse> listar() {
@@ -103,6 +108,7 @@ public class PrecioQuesoService {
                         .collect(Collectors.groupingBy(p -> p.getPresentacion().getId()));
 
         LocalDate hoy = LocalDate.now();
+        List<String> codigosTipos = tipoPrecioService.listar(false).stream().map(t -> t.codigo()).toList();
         Page<FilaPrecioPresentacionResponse> pagina = filas.map(fila -> {
             UUID presentacionId = (UUID) fila[4];
             List<PrecioQueso> precios = presentacionId != null
@@ -112,24 +118,32 @@ public class PrecioQuesoService {
                     (UUID) fila[0], (String) fila[1],
                     (UUID) fila[2], (String) fila[3],
                     presentacionId, (String) fila[5],
-                    resumenModalidad(precios, TipoClienteVenta.MAYORISTA, hoy),
-                    resumenModalidad(precios, TipoClienteVenta.PROVEEDOR, hoy),
-                    resumenModalidad(precios, TipoClienteVenta.PUBLICO, hoy)
+                    resumenModalidad(precios, "MAYORISTA", hoy),
+                    resumenModalidad(precios, "PROVEEDOR", hoy),
+                    resumenModalidad(precios, TipoPrecio.PUBLICO, hoy),
+                    porTipo(precios, codigosTipos, hoy)
             );
         });
         return PaginaResponse.de(pagina);
     }
 
-    private PrecioModalidadResponse resumenModalidad(List<PrecioQueso> precios, TipoClienteVenta modalidad, LocalDate hoy) {
+    /** Un resumen por cada tipo del catalogo (activo o no): la tabla de precios no depende de columnas fijas. */
+    private Map<String, PrecioModalidadResponse> porTipo(List<PrecioQueso> precios, List<String> codigos, LocalDate hoy) {
+        Map<String, PrecioModalidadResponse> mapa = new java.util.LinkedHashMap<>();
+        for (String codigo : codigos) mapa.put(codigo, resumenModalidad(precios, codigo, hoy));
+        return mapa;
+    }
+
+    private PrecioModalidadResponse resumenModalidad(List<PrecioQueso> precios, String modalidad, LocalDate hoy) {
         PrecioQueso vigente = precios.stream()
-                .filter(p -> p.getModalidad() == modalidad && !p.getVigenteDesde().isAfter(hoy))
+                .filter(p -> p.getModalidad().equals(modalidad) && !p.getVigenteDesde().isAfter(hoy))
                 .max(Comparator.comparing(PrecioQueso::getVigenteDesde))
                 .orElse(null);
         if (vigente != null) {
             return new PrecioModalidadResponse("VIGENTE", vigente.getPrecio(), vigente.getVigenteDesde());
         }
         PrecioQueso programado = precios.stream()
-                .filter(p -> p.getModalidad() == modalidad && p.getVigenteDesde().isAfter(hoy))
+                .filter(p -> p.getModalidad().equals(modalidad) && p.getVigenteDesde().isAfter(hoy))
                 .min(Comparator.comparing(PrecioQueso::getVigenteDesde))
                 .orElse(null);
         if (programado != null) {
@@ -140,7 +154,7 @@ public class PrecioQuesoService {
 
     // Usado por VentaService al confirmar una venta: el backend siempre resuelve el precio, nunca confia
     // en el que envio el cliente (ver comentario en VentaService).
-    public BigDecimal resolverPrecioVigente(Presentacion presentacion, TipoClienteVenta modalidad, LocalDate fecha) {
+    public BigDecimal resolverPrecioVigente(Presentacion presentacion, String modalidad, LocalDate fecha) {
         return buscarVigenteOFallar(presentacion, modalidad, fecha).getPrecio();
     }
 
@@ -150,14 +164,14 @@ public class PrecioQuesoService {
     public PrecioQuesoResponse resolverParaConsulta(UUID presentacionId, String tipoClienteStr, LocalDate fecha) {
         Presentacion presentacion = presentacionRepository.findById(presentacionId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Presentacion no encontrada: " + presentacionId));
-        TipoClienteVenta modalidad = TipoClienteVenta.valueOf(tipoClienteStr);
+        String modalidad = tipoPrecioService.obtener(tipoClienteStr).getCodigo();
         return toResponse(buscarVigenteOFallar(presentacion, modalidad, fecha));
     }
 
     // Distingue "nunca se configuro un precio" de "hay uno pero recien entra en vigencia despues" (RF Fase
     // 2, punto 7) -- ambos son 400 (ValidacionNegocioException, regla de negocio, no error de servidor),
     // pero con mensajes que no se confunden entre si.
-    private PrecioQueso buscarVigenteOFallar(Presentacion presentacion, TipoClienteVenta modalidad, LocalDate fecha) {
+    private PrecioQueso buscarVigenteOFallar(Presentacion presentacion, String modalidad, LocalDate fecha) {
         return repository.findVigente(presentacion.getId(), modalidad, fecha)
                 .orElseGet(() -> {
                     var programada = repository.findPrimeraProgramada(presentacion.getId(), modalidad, fecha);
@@ -176,6 +190,6 @@ public class PrecioQuesoService {
     private PrecioQuesoResponse toResponse(PrecioQueso p) {
         return new PrecioQuesoResponse(p.getId(), p.getPresentacion().getId(), p.getPresentacion().getNombre(),
                 p.getPresentacion().getProducto().getId(), p.getPresentacion().getProducto().getNombre(),
-                p.getModalidad().name(), p.getPrecio(), p.getVigenteDesde());
+                p.getModalidad(), p.getPrecio(), p.getVigenteDesde());
     }
 }

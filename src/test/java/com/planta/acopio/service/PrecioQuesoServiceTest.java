@@ -4,7 +4,6 @@ import com.planta.acopio.dto.PrecioQuesoRequest;
 import com.planta.acopio.entity.PrecioQueso;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Producto;
-import com.planta.acopio.entity.TipoClienteVenta;
 import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
@@ -48,7 +47,7 @@ class PrecioQuesoServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PrecioQuesoService(repository, presentacionRepository, org.mockito.Mockito.mock(TipoPrecioService.class));
+        service = new PrecioQuesoService(repository, presentacionRepository, TiposPrecioSimulados.activos());
     }
 
     private Producto yogurt() {
@@ -77,7 +76,7 @@ class PrecioQuesoServiceTest {
     @Test
     void crearRegistraUnPrecioNuevoParaUnaPresentacionYModalidad() {
         when(presentacionRepository.findById(presentacionId)).thenReturn(Optional.of(botella1L()));
-        when(repository.existsByPresentacionIdAndModalidadAndVigenteDesde(presentacionId, TipoClienteVenta.PUBLICO, LocalDate.of(2026, 9, 18)))
+        when(repository.existsByPresentacionIdAndModalidadAndVigenteDesde(presentacionId, "PUBLICO", LocalDate.of(2026, 9, 18)))
                 .thenReturn(false);
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
@@ -94,7 +93,7 @@ class PrecioQuesoServiceTest {
     @Test
     void crearRechazaUnPrecioDuplicadoParaLaMismaPresentacionModalidadYVigencia() {
         when(presentacionRepository.findById(presentacionId)).thenReturn(Optional.of(botella1L()));
-        when(repository.existsByPresentacionIdAndModalidadAndVigenteDesde(presentacionId, TipoClienteVenta.PUBLICO, LocalDate.of(2026, 9, 18)))
+        when(repository.existsByPresentacionIdAndModalidadAndVigenteDesde(presentacionId, "PUBLICO", LocalDate.of(2026, 9, 18)))
                 .thenReturn(true);
 
         var dto = new PrecioQuesoRequest(presentacionId, "PUBLICO", BigDecimal.valueOf(15.00), LocalDate.of(2026, 9, 18));
@@ -154,10 +153,10 @@ class PrecioQuesoServiceTest {
         when(repository.save(any())).thenAnswer(inv -> inv.getArgument(0));
         service.crear(new PrecioQuesoRequest(presentacionId, "PUBLICO", BigDecimal.valueOf(8.00), LocalDate.of(2026, 9, 18)));
 
-        when(repository.findVigente(presentacionId, TipoClienteVenta.MAYORISTA, LocalDate.of(2026, 9, 18))).thenReturn(Optional.empty());
-        when(repository.findPrimeraProgramada(presentacionId, TipoClienteVenta.MAYORISTA, LocalDate.of(2026, 9, 18))).thenReturn(Optional.empty());
+        when(repository.findVigente(presentacionId, "MAYORISTA", LocalDate.of(2026, 9, 18))).thenReturn(Optional.empty());
+        when(repository.findPrimeraProgramada(presentacionId, "MAYORISTA", LocalDate.of(2026, 9, 18))).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.resolverPrecioVigente(botella1L(), TipoClienteVenta.MAYORISTA, LocalDate.of(2026, 9, 18)))
+        assertThatThrownBy(() -> service.resolverPrecioVigente(botella1L(), "MAYORISTA", LocalDate.of(2026, 9, 18)))
                 .isInstanceOf(ValidacionNegocioException.class);
     }
 
@@ -166,7 +165,7 @@ class PrecioQuesoServiceTest {
         PrecioQueso p = new PrecioQueso();
         p.setId(UUID.randomUUID());
         p.setPresentacion(botella1L());
-        p.setModalidad(TipoClienteVenta.PUBLICO);
+        p.setModalidad("PUBLICO");
         p.setPrecio(BigDecimal.valueOf(15.00));
         p.setVigenteDesde(LocalDate.of(2026, 9, 18));
         when(repository.findAllByOrderByVigenteDesdeDesc()).thenReturn(List.of(p));
@@ -185,7 +184,7 @@ class PrecioQuesoServiceTest {
         PrecioQueso p = new PrecioQueso();
         p.setId(UUID.randomUUID());
         p.setPresentacion(botella1L());
-        p.setModalidad(TipoClienteVenta.PUBLICO);
+        p.setModalidad("PUBLICO");
         p.setPrecio(BigDecimal.valueOf(15.00));
         p.setVigenteDesde(LocalDate.of(2026, 9, 18));
         when(repository.findByPresentacionIdOrderByVigenteDesdeDesc(presentacionId)).thenReturn(List.of(p));
@@ -212,10 +211,10 @@ class PrecioQuesoServiceTest {
     void resolverPrecioVigenteDelegaEnElRepositorioYDevuelveElPrecioEncontrado() {
         PrecioQueso p = new PrecioQueso();
         p.setPrecio(BigDecimal.valueOf(15.00));
-        when(repository.findVigente(presentacionId, TipoClienteVenta.PUBLICO, LocalDate.of(2026, 9, 18)))
+        when(repository.findVigente(presentacionId, "PUBLICO", LocalDate.of(2026, 9, 18)))
                 .thenReturn(Optional.of(p));
 
-        BigDecimal precio = service.resolverPrecioVigente(botella1L(), TipoClienteVenta.PUBLICO, LocalDate.of(2026, 9, 18));
+        BigDecimal precio = service.resolverPrecioVigente(botella1L(), "PUBLICO", LocalDate.of(2026, 9, 18));
 
         assertThat(precio).isEqualByComparingTo("15.00");
     }
@@ -225,7 +224,7 @@ class PrecioQuesoServiceTest {
         when(repository.findVigente(any(), any(), any())).thenReturn(Optional.empty());
         when(repository.findPrimeraProgramada(any(), any(), any())).thenReturn(Optional.empty());
 
-        assertThatThrownBy(() -> service.resolverPrecioVigente(botella1L(), TipoClienteVenta.PUBLICO, LocalDate.of(2026, 9, 18)))
+        assertThatThrownBy(() -> service.resolverPrecioVigente(botella1L(), "PUBLICO", LocalDate.of(2026, 9, 18)))
                 .isInstanceOf(ValidacionNegocioException.class)
                 .hasMessageContaining("No hay un precio configurado");
     }
@@ -239,7 +238,7 @@ class PrecioQuesoServiceTest {
         when(repository.findVigente(any(), any(), any())).thenReturn(Optional.empty());
         when(repository.findPrimeraProgramada(any(), any(), any())).thenReturn(Optional.of(futuro));
 
-        assertThatThrownBy(() -> service.resolverPrecioVigente(botella1L(), TipoClienteVenta.PUBLICO, LocalDate.of(2026, 9, 18)))
+        assertThatThrownBy(() -> service.resolverPrecioVigente(botella1L(), "PUBLICO", LocalDate.of(2026, 9, 18)))
                 .isInstanceOf(ValidacionNegocioException.class)
                 .hasMessageContaining("programado")
                 .hasMessageContaining("2026-10-01");
@@ -258,11 +257,11 @@ class PrecioQuesoServiceTest {
         PrecioQueso p = new PrecioQueso();
         p.setId(UUID.randomUUID());
         p.setPresentacion(botella1L());
-        p.setModalidad(TipoClienteVenta.MAYORISTA);
+        p.setModalidad("MAYORISTA");
         p.setPrecio(BigDecimal.valueOf(13.50));
         p.setVigenteDesde(LocalDate.of(2026, 9, 1));
         when(presentacionRepository.findById(presentacionId)).thenReturn(Optional.of(botella1L()));
-        when(repository.findVigente(presentacionId, TipoClienteVenta.MAYORISTA, LocalDate.of(2026, 9, 18)))
+        when(repository.findVigente(presentacionId, "MAYORISTA", LocalDate.of(2026, 9, 18)))
                 .thenReturn(Optional.of(p));
 
         var resultado = service.resolverParaConsulta(presentacionId, "MAYORISTA", LocalDate.of(2026, 9, 18));
@@ -279,10 +278,10 @@ class PrecioQuesoServiceTest {
         when(presentacionRepository.findById(presentacionId)).thenReturn(Optional.of(botella1L()));
         PrecioQueso antiguo = new PrecioQueso();
         antiguo.setPresentacion(botella1L());
-        antiguo.setModalidad(TipoClienteVenta.PUBLICO);
+        antiguo.setModalidad("PUBLICO");
         antiguo.setPrecio(BigDecimal.valueOf(7.00));
         antiguo.setVigenteDesde(LocalDate.of(2025, 6, 1));
-        when(repository.findVigente(presentacionId, TipoClienteVenta.PUBLICO, LocalDate.of(2026, 1, 1)))
+        when(repository.findVigente(presentacionId, "PUBLICO", LocalDate.of(2026, 1, 1)))
                 .thenReturn(Optional.of(antiguo));
 
         var resultado = service.resolverParaConsulta(presentacionId, "PUBLICO", LocalDate.of(2026, 1, 1));
@@ -313,7 +312,7 @@ class PrecioQuesoServiceTest {
 
         PrecioQueso vigente = new PrecioQueso();
         vigente.setPresentacion(presentacionCon(idPresentacion));
-        vigente.setModalidad(TipoClienteVenta.PUBLICO);
+        vigente.setModalidad("PUBLICO");
         vigente.setPrecio(BigDecimal.valueOf(12.00));
         vigente.setVigenteDesde(LocalDate.now().minusDays(5));
         when(repository.findByPresentacionIdIn(List.of(idPresentacion))).thenReturn(List.of(vigente));
@@ -351,7 +350,7 @@ class PrecioQuesoServiceTest {
 
         PrecioQueso programado = new PrecioQueso();
         programado.setPresentacion(presentacionCon(idPresentacion));
-        programado.setModalidad(TipoClienteVenta.MAYORISTA);
+        programado.setModalidad("MAYORISTA");
         programado.setPrecio(BigDecimal.valueOf(6.00));
         programado.setVigenteDesde(LocalDate.now().plusDays(15));
         when(repository.findByPresentacionIdIn(List.of(idPresentacion))).thenReturn(List.of(programado));

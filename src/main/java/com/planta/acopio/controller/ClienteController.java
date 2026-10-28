@@ -106,6 +106,13 @@ public class ClienteController {
         return ResponseEntity.ok(service.cambiarMayorista(id, dto.mayorista(), dto.motivo()));
     }
 
+    @Operation(summary = "Habilitar o quitar a un cliente para un tipo de precio", description = "Rol: ADMIN, con motivo. Solo para tipos con regla CLIENTE_HABILITADO. Quitarla no cambia el tipo habitual guardado.")
+    @PutMapping("/{id}/tipos-precio/{codigo}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ClienteResponse> habilitarTipo(@PathVariable UUID id, @PathVariable String codigo, @RequestBody @Valid com.planta.acopio.dto.ClienteDtos.HabilitacionTipoRequest dto) {
+        return ResponseEntity.ok(service.cambiarHabilitacion(id, codigo, dto.habilitado(), dto.motivo()));
+    }
+
     @PutMapping("/{id}/desactivar")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ClienteResponse> desactivar(@PathVariable UUID id) {

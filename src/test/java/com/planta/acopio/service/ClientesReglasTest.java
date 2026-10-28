@@ -1,6 +1,9 @@
 package com.planta.acopio.service;
 
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.ReglaComprador;
+import com.planta.acopio.entity.TipoPrecio;
+import java.util.Set;
+import static org.mockito.Mockito.when;
 import com.planta.acopio.entity.TipoComprador;
 import com.planta.acopio.entity.TipoPersona;
 import com.planta.acopio.exception.ValidacionNegocioException;
@@ -18,56 +21,83 @@ import static org.mockito.Mockito.mock;
 // Fase H: reglas puras del padron de clientes y del comprador por canal.
 class ClientesReglasTest {
 
+    private static final TipoPrecioService TIPOS = tipos();
     private final CompradorService compradores = new CompradorService(mock(com.planta.acopio.repository.ClienteRepository.class),
-            mock(com.planta.acopio.repository.ClienteTelefonoRepository.class), mock(com.planta.acopio.repository.ProveedorRepository.class));
+            mock(com.planta.acopio.repository.ClienteTelefonoRepository.class), mock(com.planta.acopio.repository.ProveedorRepository.class),
+            mock(com.planta.acopio.repository.ClienteTipoPrecioRepository.class), TIPOS);
+
+    private static TipoPrecio tipo(String codigo, String nombre, ReglaComprador regla) {
+        TipoPrecio t = new TipoPrecio();
+        t.setCodigo(codigo);
+        t.setNombre(nombre);
+        t.setReglaComprador(regla);
+        return t;
+    }
+
+    private static TipoPrecioService tipos() {
+        TipoPrecioService s = mock(TipoPrecioService.class);
+        when(s.obtener("PUBLICO")).thenReturn(tipo("PUBLICO", "Público", ReglaComprador.CUALQUIERA));
+        when(s.obtener("MAYORISTA")).thenReturn(tipo("MAYORISTA", "Mayorista", ReglaComprador.CLIENTE_HABILITADO));
+        when(s.obtener("PROVEEDOR")).thenReturn(tipo("PROVEEDOR", "Proveedor", ReglaComprador.PROVEEDOR_PADRON));
+        when(s.obtener("DISTRIBUIDOR")).thenReturn(tipo("DISTRIBUIDOR", "Distribuidor", ReglaComprador.CLIENTE_HABILITADO));
+        return s;
+    }
 
     private static CompradorService.Comprador cliente(boolean mayorista, boolean activo) {
-        return new CompradorService.Comprador(TipoComprador.CLIENTE, UUID.randomUUID(), "Rosa", null, mayorista, activo);
+        return new CompradorService.Comprador(TipoComprador.CLIENTE, UUID.randomUUID(), "Rosa", null, mayorista ? Set.of("MAYORISTA") : Set.of(), activo);
     }
 
     private static CompradorService.Comprador proveedor() {
-        return new CompradorService.Comprador(TipoComprador.PROVEEDOR, UUID.randomUUID(), "Juan", null, false, true);
+        return new CompradorService.Comprador(TipoComprador.PROVEEDOR, UUID.randomUUID(), "Juan", null, Set.of(), true);
     }
 
     @Test
     void enPublicoElCompradorEsOpcionalYPuedeSerClienteOProveedor() {
-        assertThatCode(() -> compradores.validarParaCanal(TipoClienteVenta.PUBLICO, null)).doesNotThrowAnyException();
-        assertThatCode(() -> compradores.validarParaCanal(TipoClienteVenta.PUBLICO, cliente(false, true))).doesNotThrowAnyException();
-        assertThatCode(() -> compradores.validarParaCanal(TipoClienteVenta.PUBLICO, proveedor())).doesNotThrowAnyException();
+        assertThatCode(() -> compradores.validarParaCanal("PUBLICO", null)).doesNotThrowAnyException();
+        assertThatCode(() -> compradores.validarParaCanal("PUBLICO", cliente(false, true))).doesNotThrowAnyException();
+        assertThatCode(() -> compradores.validarParaCanal("PUBLICO", proveedor())).doesNotThrowAnyException();
     }
 
     @Test
     void elCanalHabitualEsPublicoOMayoristaYNoSeConfundeConElTipo() {
-        assertThat(ClienteService.canalHabitual(null, false)).isEqualTo("PUBLICO");
-        assertThat(ClienteService.canalHabitual(" ", true)).isEqualTo("PUBLICO");
-        assertThat(ClienteService.canalHabitual("mayorista", true)).isEqualTo("MAYORISTA");
-        assertThat(ClienteService.canalHabitual("PUBLICO", true)).isEqualTo("PUBLICO"); // un mayorista puede comprar a precio publico
-        assertThatThrownBy(() -> ClienteService.canalHabitual("MAYORISTA", false)).isInstanceOf(ValidacionNegocioException.class)
+        assertThat(ClienteService.canalHabitualImportacion(null, false)).isEqualTo("PUBLICO");
+        assertThat(ClienteService.canalHabitualImportacion(" ", true)).isEqualTo("PUBLICO");
+        assertThat(ClienteService.canalHabitualImportacion("mayorista", true)).isEqualTo("MAYORISTA");
+        assertThat(ClienteService.canalHabitualImportacion("PUBLICO", true)).isEqualTo("PUBLICO"); // un mayorista puede comprar a precio publico
+        assertThatThrownBy(() -> ClienteService.canalHabitualImportacion("MAYORISTA", false)).isInstanceOf(ValidacionNegocioException.class)
                 .hasMessageContaining("habilitados como mayoristas");
-        assertThatThrownBy(() -> ClienteService.canalHabitual("PROVEEDOR", true)).isInstanceOf(ValidacionNegocioException.class)
-                .hasMessageContaining("proveedores del padrón");
-        assertThatThrownBy(() -> ClienteService.canalHabitual("VIP", false)).isInstanceOf(ValidacionNegocioException.class);
+        assertThatThrownBy(() -> ClienteService.canalHabitualImportacion("PROVEEDOR", true)).isInstanceOf(ValidacionNegocioException.class);
+        assertThatThrownBy(() -> ClienteService.canalHabitualImportacion("VIP", false)).isInstanceOf(ValidacionNegocioException.class);
     }
 
     @Test
     void mayoristaExigeUnClienteHabilitadoPorAdmin() {
-        assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.MAYORISTA, null)).isInstanceOf(ValidacionNegocioException.class);
-        assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.MAYORISTA, cliente(false, true)))
-                .hasMessageContaining("no está habilitado como mayorista");
-        assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.MAYORISTA, proveedor())).isInstanceOf(ValidacionNegocioException.class);
-        assertThatCode(() -> compradores.validarParaCanal(TipoClienteVenta.MAYORISTA, cliente(true, true))).doesNotThrowAnyException();
+        assertThatThrownBy(() -> compradores.validarParaCanal("MAYORISTA", null)).isInstanceOf(ValidacionNegocioException.class);
+        assertThatThrownBy(() -> compradores.validarParaCanal("MAYORISTA", cliente(false, true)))
+                .hasMessageContaining("no está habilitado para Mayorista");
+        assertThatThrownBy(() -> compradores.validarParaCanal("MAYORISTA", proveedor())).isInstanceOf(ValidacionNegocioException.class);
+        assertThatCode(() -> compradores.validarParaCanal("MAYORISTA", cliente(true, true))).doesNotThrowAnyException();
+    }
+
+    @Test
+    void unTipoNuevoConReglaClienteHabilitadoExigeLaHabilitacionDeEseTipoSinCodigoEspecial() {
+        var soloMayorista = cliente(true, true);
+        var habilitadoDistribuidor = new CompradorService.Comprador(TipoComprador.CLIENTE, UUID.randomUUID(), "Rosa", null, Set.of("DISTRIBUIDOR"), true);
+        assertThatThrownBy(() -> compradores.validarParaCanal("DISTRIBUIDOR", soloMayorista)).hasMessageContaining("no está habilitado para Distribuidor");
+        assertThatThrownBy(() -> compradores.validarParaCanal("DISTRIBUIDOR", null)).isInstanceOf(ValidacionNegocioException.class);
+        assertThatCode(() -> compradores.validarParaCanal("DISTRIBUIDOR", habilitadoDistribuidor)).doesNotThrowAnyException();
     }
 
     @Test
     void proveedorExigeUnProveedorDelPadron() {
-        assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.PROVEEDOR, null)).isInstanceOf(ValidacionNegocioException.class);
-        assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.PROVEEDOR, cliente(true, true))).isInstanceOf(ValidacionNegocioException.class);
-        assertThatCode(() -> compradores.validarParaCanal(TipoClienteVenta.PROVEEDOR, proveedor())).doesNotThrowAnyException();
+        assertThatThrownBy(() -> compradores.validarParaCanal("PROVEEDOR", null)).isInstanceOf(ValidacionNegocioException.class);
+        assertThatThrownBy(() -> compradores.validarParaCanal("PROVEEDOR", cliente(true, true))).isInstanceOf(ValidacionNegocioException.class);
+        assertThatCode(() -> compradores.validarParaCanal("PROVEEDOR", proveedor())).doesNotThrowAnyException();
     }
 
     @Test
     void unaFichaDesactivadaNoSeUsaComoComprador() {
-        assertThatThrownBy(() -> compradores.validarParaCanal(TipoClienteVenta.PUBLICO, cliente(true, false))).hasMessageContaining("desactivada");
+        assertThatThrownBy(() -> compradores.validarParaCanal("PUBLICO", cliente(true, false))).hasMessageContaining("desactivada");
     }
 
     @Test

@@ -280,6 +280,26 @@ public final class ColumnasExportacion {
         return List.copyOf(columnas);
     }
 
+    /**
+     * Columnas de la exportacion de precios con UNA triada (precio, vigente desde, situacion) por cada tipo del catalogo: los tres originales
+     * primero y en su orden de siempre (Mayorista, Proveedor, Publico) para que el archivo actual no cambie, y despues los tipos nuevos por codigo.
+     */
+    public static List<ColumnaExcel<FilaPrecioPresentacionResponse>> preciosPresentacion(List<com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse> tipos) {
+        List<ColumnaExcel<FilaPrecioPresentacionResponse>> columnas = new ArrayList<>(List.of(
+                texto("Familia", 20, FilaPrecioPresentacionResponse::familiaNombre),
+                texto("Producto", 28, FilaPrecioPresentacionResponse::productoNombre),
+                texto("Presentación", 28, FilaPrecioPresentacionResponse::presentacionNombre)));
+        List<String> originales = List.of("MAYORISTA", "PROVEEDOR", "PUBLICO");
+        List<com.planta.acopio.dto.TipoPrecioDtos.TipoPrecioResponse> ordenados = new ArrayList<>();
+        for (String codigo : originales) tipos.stream().filter(t -> t.codigo().equals(codigo)).findFirst().ifPresent(ordenados::add);
+        tipos.stream().filter(t -> !originales.contains(t.codigo())).sorted(java.util.Comparator.comparing(t -> t.codigo())).forEach(ordenados::add);
+        for (var t : ordenados) {
+            String codigo = t.codigo();
+            agregarModalidad(columnas, t.nombre(), f -> f.porTipo() == null ? null : f.porTipo().get(codigo));
+        }
+        return List.copyOf(columnas);
+    }
+
     private static void agregarModalidad(List<ColumnaExcel<FilaPrecioPresentacionResponse>> columnas, String nombre,
                                          Function<FilaPrecioPresentacionResponse, PrecioModalidadResponse> modalidad) {
         columnas.add(decimal(nombre, f -> campo(modalidad.apply(f), PrecioModalidadResponse::precio)));

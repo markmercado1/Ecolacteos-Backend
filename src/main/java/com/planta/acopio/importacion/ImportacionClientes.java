@@ -148,7 +148,7 @@ public class ImportacionClientes implements TipoImportacion<Void> {
             try {
                 doc = ClienteService.documentos(tipo, nombre, dni, ruc, razonSocial);
                 if (mayorista && motivo == null) throw new ValidacionNegocioException(MOTIVO.encabezado() + ": es obligatorio para un mayorista.");
-                ClienteService.canalHabitual(canal, mayorista);
+                ClienteService.canalHabitualImportacion(canal, mayorista);
             } catch (ValidacionNegocioException e) {
                 errores.add(e.getMessage());
             }

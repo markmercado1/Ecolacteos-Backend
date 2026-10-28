@@ -375,7 +375,7 @@ class BusquedaYOrdenTablasIntegrationTest {
         Venta v = new Venta();
         v.setUuidCliente(uuid);
         v.setFecha(fecha);
-        v.setTipoCliente(TipoClienteVenta.PUBLICO);
+        v.setTipoCliente("PUBLICO");
         v.setTotal(new BigDecimal("10.00"));
         v.setVendedor(vendedor);
         v = ventaRepository.saveAndFlush(v);

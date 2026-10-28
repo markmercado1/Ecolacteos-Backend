@@ -14,7 +14,8 @@ public record FilaPrecioPresentacionResponse(
     String productoNombre,
     UUID presentacionId,
     String presentacionNombre,
-    PrecioModalidadResponse mayorista,
+    PrecioModalidadResponse mayorista,   // compatibilidad: los tres tipos originales; la fuente completa es `porTipo`
     PrecioModalidadResponse proveedor,
-    PrecioModalidadResponse publico
+    PrecioModalidadResponse publico,
+    java.util.Map<String, PrecioModalidadResponse> porTipo   // un resumen por cada tipo del catalogo, por codigo
 ) {}

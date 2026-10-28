@@ -22,8 +22,10 @@ public class CambioTipoPrecio {
     @Column(nullable = false, updatable = false, columnDefinition = "TEXT")
     private String motivo;
 
-    @ManyToOne
-    @JoinColumn(name = "usuario_id", updatable = false)
+    @Column(nullable = false, updatable = false, length = 10)
+    private String accion = "ESTADO";
+
+    @ManyToOne    @JoinColumn(name = "usuario_id", updatable = false)
     private Usuario usuario;
 
     @Column(name = "creado_en", nullable = false, updatable = false)
@@ -34,6 +36,8 @@ public class CambioTipoPrecio {
     public UUID getId() { return id; }
     public String getCodigo() { return codigo; }
     public void setCodigo(String codigo) { this.codigo = codigo; }
+    public String getAccion() { return accion; }
+    public void setAccion(String accion) { this.accion = accion; }
     public boolean isActivo() { return activo; }
     public void setActivo(boolean activo) { this.activo = activo; }
     public String getMotivo() { return motivo; }

@@ -1,7 +1,7 @@
 package com.planta.acopio.repository;
 
 import com.planta.acopio.entity.PrecioQueso;
-import com.planta.acopio.entity.TipoClienteVenta;
+import com.planta.acopio.entity.TipoPrecio;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -18,7 +18,7 @@ public interface PrecioQuesoRepository extends JpaRepository<PrecioQueso, UUID> 
     @Query("SELECT p FROM PrecioQueso p WHERE p.presentacion.id = :presentacionId AND p.modalidad = :modalidad "
             + "AND p.vigenteDesde <= :fecha ORDER BY p.vigenteDesde DESC LIMIT 1")
     Optional<PrecioQueso> findVigente(@Param("presentacionId") UUID presentacionId,
-                                       @Param("modalidad") TipoClienteVenta modalidad,
+                                       @Param("modalidad") String modalidad,
                                        @Param("fecha") LocalDate fecha);
 
     // Distingue "nunca hubo precio" de "hay uno pero todavia no entra en vigencia" (RF Fase 2, punto 7):
@@ -26,10 +26,10 @@ public interface PrecioQuesoRepository extends JpaRepository<PrecioQueso, UUID> 
     @Query("SELECT p FROM PrecioQueso p WHERE p.presentacion.id = :presentacionId AND p.modalidad = :modalidad "
             + "AND p.vigenteDesde > :fecha ORDER BY p.vigenteDesde ASC LIMIT 1")
     Optional<PrecioQueso> findPrimeraProgramada(@Param("presentacionId") UUID presentacionId,
-                                                  @Param("modalidad") TipoClienteVenta modalidad,
+                                                  @Param("modalidad") String modalidad,
                                                   @Param("fecha") LocalDate fecha);
 
-    boolean existsByPresentacionIdAndModalidadAndVigenteDesde(UUID presentacionId, TipoClienteVenta modalidad, LocalDate vigenteDesde);
+    boolean existsByPresentacionIdAndModalidadAndVigenteDesde(UUID presentacionId, String modalidad, LocalDate vigenteDesde);
 
     List<PrecioQueso> findAllByOrderByVigenteDesdeDesc();
 
@@ -49,6 +49,6 @@ public interface PrecioQuesoRepository extends JpaRepository<PrecioQueso, UUID> 
     @Query("SELECT p FROM PrecioQueso p WHERE p.presentacion.id IN :presentacionIds AND p.modalidad = :modalidad "
             + "AND p.vigenteDesde <= :fecha")
     List<PrecioQueso> findVigentesHasta(@Param("presentacionIds") List<UUID> presentacionIds,
-                                         @Param("modalidad") TipoClienteVenta modalidad,
+                                         @Param("modalidad") String modalidad,
                                          @Param("fecha") LocalDate fecha);
 }

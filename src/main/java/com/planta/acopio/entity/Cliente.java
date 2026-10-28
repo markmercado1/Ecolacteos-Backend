@@ -33,19 +33,7 @@ public class Cliente {
     @Column(length = 120)
     private String correo;
 
-    @Column(nullable = false)
-    private boolean mayorista;
-
-    @Column(name = "mayorista_cambiado_por")
-    private UUID mayoristaCambiadoPor;
-
-    @Column(name = "mayorista_cambiado_en")
-    private LocalDateTime mayoristaCambiadoEn;
-
-    @Column(name = "mayorista_motivo", length = 300)
-    private String mayoristaMotivo;
-
-    // V34: canal que el panel propone al vender (PUBLICO o MAYORISTA; MAYORISTA solo si la ficha es mayorista).
+    // V34: canal que el panel propone al vender (un tipo de precio activo para el que la ficha este habilitada).
     @Column(name = "canal_habitual", nullable = false, length = 20)
     private String canalHabitual = "PUBLICO";
 
@@ -77,14 +65,6 @@ public class Cliente {
     public void setRazonSocial(String razonSocial) { this.razonSocial = razonSocial; }
     public String getCorreo() { return correo; }
     public void setCorreo(String correo) { this.correo = correo; }
-    public boolean isMayorista() { return mayorista; }
-    public void setMayorista(boolean mayorista) { this.mayorista = mayorista; }
-    public UUID getMayoristaCambiadoPor() { return mayoristaCambiadoPor; }
-    public void setMayoristaCambiadoPor(UUID mayoristaCambiadoPor) { this.mayoristaCambiadoPor = mayoristaCambiadoPor; }
-    public LocalDateTime getMayoristaCambiadoEn() { return mayoristaCambiadoEn; }
-    public void setMayoristaCambiadoEn(LocalDateTime mayoristaCambiadoEn) { this.mayoristaCambiadoEn = mayoristaCambiadoEn; }
-    public String getMayoristaMotivo() { return mayoristaMotivo; }
-    public void setMayoristaMotivo(String mayoristaMotivo) { this.mayoristaMotivo = mayoristaMotivo; }
     public String getCanalHabitual() { return canalHabitual; }
     public void setCanalHabitual(String canalHabitual) { this.canalHabitual = canalHabitual; }
     public boolean isActivo() { return activo; }
