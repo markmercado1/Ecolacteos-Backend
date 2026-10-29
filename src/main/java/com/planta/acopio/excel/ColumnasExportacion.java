@@ -2,6 +2,8 @@ package com.planta.acopio.excel;
 
 import com.planta.acopio.dto.AlertaAnomaliaResponse;
 import com.planta.acopio.dto.AnalisisBandejaResponse;
+import com.planta.acopio.dto.LoteInsumoResponse;
+import com.planta.acopio.dto.MovimientoKardexResponse;
 import com.planta.acopio.dto.ClienteDtos.ClienteResponse;
 import com.planta.acopio.dto.ConfiguracionSistemaResponse;
 import com.planta.acopio.dto.DetalleSalidaResponse;
@@ -375,4 +377,49 @@ public final class ColumnasExportacion {
                 texto("Responsable", 30, UnidadResponse::responsableNombre)
         );
     }
+
+    // ---------------------------------------------------------------------------------------- lotes de insumo (V43 a V46)
+
+    private static final Map<String, String> ETIQUETA_MOV_INSUMO = Map.ofEntries(
+            Map.entry("SALDO_INICIAL", "Saldo inicial"), Map.entry("INGRESO", "Ingreso"), Map.entry("SALIDA_PRODUCCION", "Consumo en producción"),
+            Map.entry("AJUSTE", "Conteo físico"), Map.entry("SALIDA_VENCIMIENTO", "Salida: vencido"), Map.entry("SALIDA_DETERIORO", "Salida: deterioro"),
+            Map.entry("SALIDA_OTRA", "Salida: otra"), Map.entry("SALIDA_MERMA", "Salida: merma"), Map.entry("SALIDA_DERRAME", "Salida: derrame"),
+            Map.entry("SALIDA_DEVOLUCION_PROVEEDOR", "Salida: devolución a proveedor"), Map.entry("SALIDA_CONSUMO_MANUAL", "Salida: consumo manual"),
+            Map.entry("ANULACION_INGRESO", "Anulación de ingreso"), Map.entry("TRANSFERENCIA_LOTE", "Transferencia entre lotes"));
+
+    private static final Map<String, String> ETIQUETA_DOCUMENTO = Map.of("GUIA", "Guía", "FACTURA", "Factura", "BOLETA", "Boleta", "OTRO", "Otro", "SIN_DOCUMENTO", "Sin documento");
+
+    private static final Map<String, String> ETIQUETA_ESTADO_LOTE = Map.of("VIGENTE", "Vigente", "POR_VENCER", "Por vencer", "VENCIDO", "Vencido", "AGOTADO", "Agotado");
+
+    /** Kardex de un insumo: las columnas de siempre y, por fila, su lote, proveedor, vencimiento y el documento de ingreso. */
+    public static final List<ColumnaExcel<MovimientoKardexResponse>> KARDEX_INSUMO = List.of(
+            fechaHora("Fecha", MovimientoKardexResponse::fecha),
+            texto("Movimiento", 28, m -> ETIQUETA_MOV_INSUMO.getOrDefault(m.tipoMovimiento(), m.tipoMovimiento())),
+            texto("Documento", 34, MovimientoKardexResponse::referencia),
+            decimal("Entrada", MovimientoKardexResponse::entrada),
+            decimal("Salida", MovimientoKardexResponse::salida),
+            decimal("Saldo", MovimientoKardexResponse::saldo),
+            texto("Usuario", 24, MovimientoKardexResponse::usuarioNombre),
+            texto("Motivo", 36, MovimientoKardexResponse::motivo),
+            texto("Lote", 22, MovimientoKardexResponse::loteCodigo),
+            texto("Proveedor", 30, MovimientoKardexResponse::proveedorNombre),
+            fecha("Vencimiento", MovimientoKardexResponse::fechaVencimiento),
+            texto("Tipo de documento", 18, m -> m.ingresoDocumentoTipo() == null ? null : ETIQUETA_DOCUMENTO.getOrDefault(m.ingresoDocumentoTipo(), m.ingresoDocumentoTipo())),
+            texto("Número de documento", 22, MovimientoKardexResponse::ingresoDocumentoNumero));
+
+    /** Lista de lotes de insumo con su origen y estado. */
+    public static final List<ColumnaExcel<LoteInsumoResponse>> LOTES_INSUMO = List.of(
+            texto("Código de lote", 22, LoteInsumoResponse::codigo),
+            texto("Insumo", 28, LoteInsumoResponse::insumoNombre),
+            texto("Proveedor", 30, LoteInsumoResponse::proveedorNombre),
+            texto("RUC", 14, LoteInsumoResponse::proveedorRuc),
+            texto("Lote del proveedor", 22, LoteInsumoResponse::codigoProveedor),
+            fecha("Fecha de ingreso", LoteInsumoResponse::fechaIngreso),
+            fecha("Vencimiento", LoteInsumoResponse::fechaVencimiento),
+            decimal("Cantidad inicial", LoteInsumoResponse::cantidadInicial),
+            decimal("Disponible", LoteInsumoResponse::cantidadDisponible),
+            texto("Unidad", 12, LoteInsumoResponse::unidadMedida),
+            texto("Estado", 14, l -> ETIQUETA_ESTADO_LOTE.getOrDefault(l.estado(), l.estado())),
+            texto("Documento de ingreso", 28, l -> l.tipoDocumento() == null ? null
+                    : ETIQUETA_DOCUMENTO.getOrDefault(l.tipoDocumento(), l.tipoDocumento()) + (l.numeroDocumento() == null ? "" : " " + l.numeroDocumento())));
 }

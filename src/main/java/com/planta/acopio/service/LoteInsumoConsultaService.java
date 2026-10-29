@@ -63,6 +63,17 @@ public class LoteInsumoConsultaService {
         return new com.planta.acopio.dto.AlertasLotesResponse(diasAlerta, lotes.size() - vencidos, vencidos, lotes);
     }
 
+    /** Todos los lotes (o los de un insumo), con filtro opcional por estado; los mas recientes primero. */
+    @Transactional(readOnly = true)
+    public List<LoteInsumoResponse> listarTodos(UUID insumoId, String estado) {
+        LocalDate hoy = reglaVencimiento.hoy();
+        List<LoteInsumo> lotes = insumoId == null ? repository.findAll(org.springframework.data.domain.Sort.by(
+                org.springframework.data.domain.Sort.Order.desc("creadoEn"), org.springframework.data.domain.Sort.Order.desc("id")))
+                : repository.findByInsumoIdOrderByCreadoEnDescIdDesc(insumoId);
+        return lotes.stream().map(l -> aRespuesta(l, hoy))
+                .filter(l -> estado == null || estado.isBlank() || estado.equalsIgnoreCase(l.estado())).toList();
+    }
+
     @Transactional(readOnly = true)
     public LoteInsumoResponse obtener(UUID loteId) {
         LoteInsumo l = repository.findById(loteId).orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + loteId));
