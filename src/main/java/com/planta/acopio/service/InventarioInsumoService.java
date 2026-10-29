@@ -151,6 +151,15 @@ public class InventarioInsumoService {
      * revierte TODA la transaccion del llamador (leche incluida).
      */
     public void registrarSalidasProduccion(LoteProduccion lote, Map<Insumo, BigDecimal> consumo) {
+        registrarSalidasProduccion(lote, consumo, Map.of());
+    }
+
+    /**
+     * Igual, con eleccion manual opcional de lotes: para un insumo con entrada en `manual` (lotes y cantidades elegidos), el consumo sale
+     * de ESOS lotes (la suma debe ser exacta y ninguno puede estar vencido); los demas se reparten en FEFO.
+     */
+    public void registrarSalidasProduccion(LoteProduccion lote, Map<Insumo, BigDecimal> consumo,
+                                           Map<UUID, Map<UUID, BigDecimal>> manual) {
         if (consumo.isEmpty()) return;
         Usuario usuario = usuarioAutenticado();
         List<Map.Entry<Insumo, BigDecimal>> ordenados = new ArrayList<>(consumo.entrySet());
@@ -162,7 +171,11 @@ public class InventarioInsumoService {
             }
             // V43: el consumo sale de lotes concretos (FEFO, sin lotes vencidos): un movimiento por lote usado. El UPDATE de
             // arriba ya tiene bloqueada la fila del insumo, asi que nadie mas toca sus lotes mientras se reparte.
-            for (LoteInsumoService.Asignacion a : loteService.asignar(e.getKey(), e.getValue(), LoteInsumoService.Prioridad.CONSUMO)) {
+            Map<UUID, BigDecimal> elegidos = manual.get(e.getKey().getId());
+            List<LoteInsumoService.Asignacion> asignaciones = elegidos == null || elegidos.isEmpty()
+                    ? loteService.asignar(e.getKey(), e.getValue(), LoteInsumoService.Prioridad.CONSUMO)
+                    : loteService.asignarManual(e.getKey(), new java.util.ArrayList<>(elegidos.keySet()), new java.util.ArrayList<>(elegidos.values()), e.getValue());
+            for (LoteInsumoService.Asignacion a : asignaciones) {
                 MovimientoInsumo m = nuevoMovimiento(e.getKey(), TipoMovimientoInsumo.SALIDA_PRODUCCION,
                         a.cantidad().negate(), usuario, a.lote());
                 m.setLoteProduccion(lote);

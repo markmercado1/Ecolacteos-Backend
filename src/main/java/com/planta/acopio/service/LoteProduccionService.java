@@ -318,6 +318,12 @@ public class LoteProduccionService {
 
     @Transactional
     public LoteProduccionResponse iniciar(UUID id) {
+        return iniciar(id, null);
+    }
+
+    /** Inicia la produccion; `manual` (opcional) elige a mano de que lotes de insumo sale cada insumo (el resto, FEFO). */
+    @Transactional
+    public LoteProduccionResponse iniciar(UUID id, com.planta.acopio.dto.IniciarLoteRequest manual) {
         LoteProduccion lote = bloquearLote(id);
         if (lote.getEstado() == EstadoLote.EN_PRODUCCION) {
             return toResponse(lote); // reintento: el consumo ya se confirmo una vez, nunca dos
@@ -344,7 +350,25 @@ public class LoteProduccionService {
 
         Map<Insumo, BigDecimal> consumo = new LinkedHashMap<>();
         for (LoteProduccionInsumo fila : filas) consumo.put(fila.getInsumo(), fila.getCantidad());
-        inventarioInsumoService.registrarSalidasProduccion(lote, consumo);
+        Map<UUID, Map<UUID, BigDecimal>> elegidos = new HashMap<>();
+        if (manual != null && manual.insumos() != null) {
+            Set<UUID> delPlan = new HashSet<>();
+            consumo.keySet().forEach(i -> delPlan.add(i.getId()));
+            for (com.planta.acopio.dto.IniciarLoteRequest.InsumoLotes il : manual.insumos()) {
+                if (!delPlan.contains(il.insumoId())) {
+                    throw new ValidacionNegocioException("El insumo indicado no forma parte del plan de esta producción.");
+                }
+                if (il.lotes() == null || il.lotes().isEmpty()) continue;
+                Map<UUID, BigDecimal> partes = new LinkedHashMap<>();
+                for (com.planta.acopio.dto.IniciarLoteRequest.Parte p : il.lotes()) {
+                    if (partes.putIfAbsent(p.loteId(), p.cantidad()) != null) {
+                        throw new ValidacionNegocioException("Un lote aparece más de una vez en la elección de lotes.");
+                    }
+                }
+                elegidos.put(il.insumoId(), partes);
+            }
+        }
+        inventarioInsumoService.registrarSalidasProduccion(lote, consumo, elegidos);
 
         lote.setEstado(EstadoLote.EN_PRODUCCION);
         lote.setIniciadoEn(LocalDateTime.now());

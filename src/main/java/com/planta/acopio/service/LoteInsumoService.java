@@ -14,6 +14,7 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 
 /**
  * Motor de lotes de insumo (V43): crea lotes y reparte consumos y salidas entre ellos. NO abre transaccion propia ni escribe
@@ -173,6 +174,54 @@ public class LoteInsumoService {
         }
         lote.setCantidadDisponible(lote.getCantidadDisponible().subtract(cantidad));
         return new Asignacion(lote, cantidad);
+    }
+
+    /** El reparto FEFO que se haria para `cantidad` (solo lotes vigentes), SIN descontar nada: para mostrarlo antes de iniciar. */
+    public List<Asignacion> proponer(Insumo insumo, BigDecimal cantidad) {
+        LocalDate hoy = reglaVencimiento.hoy();
+        List<Asignacion> r = new ArrayList<>();
+        BigDecimal restante = cantidad;
+        for (LoteInsumo l : repository.disponiblesFefo(insumo.getId())) {
+            if (restante.signum() == 0) break;
+            if (estaVencido(l, hoy)) continue;
+            BigDecimal toma = restante.min(l.getCantidadDisponible());
+            r.add(new Asignacion(l, toma));
+            restante = restante.subtract(toma);
+        }
+        return r;
+    }
+
+    /** Lotes con existencia que no estan vencidos (los consumibles), en FEFO. */
+    public List<LoteInsumo> consumibles(Insumo insumo) {
+        LocalDate hoy = reglaVencimiento.hoy();
+        return repository.disponiblesFefo(insumo.getId()).stream().filter(l -> !estaVencido(l, hoy)).toList();
+    }
+
+    /**
+     * Toma lo indicado de los lotes ELEGIDOS A MANO para una produccion: la suma debe ser exactamente `requerido`, cada lote debe ser del
+     * insumo, no estar vencido (nunca se consume un vencido) y alcanzar. Descuenta de cada uno. Con la fila del insumo ya bloqueada.
+     */
+    public List<Asignacion> asignarManual(Insumo insumo, List<UUID> loteIds, List<BigDecimal> cantidades, BigDecimal requerido) {
+        BigDecimal suma = cantidades.stream().reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (suma.compareTo(requerido) != 0) {
+            throw new ValidacionNegocioException("Los lotes elegidos de " + insumo.getNombre() + " suman " + plano(suma) + " y la producción necesita "
+                    + plano(requerido) + " " + insumo.getUnidadMedida() + ".");
+        }
+        LocalDate hoy = reglaVencimiento.hoy();
+        java.util.Set<UUID> vistos = new java.util.HashSet<>();
+        List<Asignacion> r = new ArrayList<>();
+        for (int i = 0; i < loteIds.size(); i++) {
+            UUID id = loteIds.get(i);
+            if (!vistos.add(id)) {
+                throw new ValidacionNegocioException("Un lote de " + insumo.getNombre() + " aparece más de una vez en la elección.");
+            }
+            LoteInsumo lote = repository.findById(id).orElseThrow(() -> new com.planta.acopio.exception.RecursoNoEncontradoException("Lote no encontrado: " + id));
+            if (estaVencido(lote, hoy)) {
+                throw new ValidacionNegocioException("El lote «" + lote.getCodigo() + "» está vencido: no se consume en producción (se da de baja con una salida por vencimiento).");
+            }
+            r.add(asignarDeLote(insumo, lote, cantidades.get(i)));
+        }
+        return r;
     }
 
     /** Stock que se puede consumir en produccion: lotes con existencia que no estan vencidos. */

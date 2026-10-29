@@ -73,6 +73,7 @@ class ProduccionFefoLotesIntegrationTest {
     @Autowired private FamiliaRepository familiaRepository;
     @Autowired private ProductoRepository productoRepository;
     @Autowired private PresentacionRepository presentacionRepository;
+    @Autowired private com.planta.acopio.controller.PlanLotesProduccionController planLotes;
     @Autowired private JdbcTemplate jdbc;
 
     private String s;
@@ -93,7 +94,8 @@ class ProduccionFefoLotesIntegrationTest {
         u.setPasswordHash("hash");
         u.setRol(rol);
         Usuario usuario = usuarioRepository.save(u);
-        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(usuario.getEmail(), null));
+        SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(usuario.getEmail(), null,
+                List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_ADMIN"))));
         Unidad un = new Unidad();
         un.setPlaca("FEF-" + s);
         un.setResponsable(usuario);
@@ -199,5 +201,49 @@ class ProduccionFefoLotesIntegrationTest {
         assertThat(disponible(vencido)).isEqualByComparingTo("6");
         assertThat(jdbc.queryForObject("SELECT stock FROM insumo WHERE id = ?", BigDecimal.class, azucar)).isEqualByComparingTo("8");
         invariantes();
+    }
+
+    @Test
+    void sePuedenElegirALosLotesDeInsumoAlIniciarYElPlanMuestraLaPropuestaFefo() {
+        conciliacionService.registrarYConciliar(new RecepcionPlantaRequest(LocalDate.now(), null, unidad.getId(), new BigDecimal("3000"), new BigDecimal("3000"), List.of()));
+        UUID a = ingreso("3", LocalDate.now().plusDays(10));
+        UUID b = ingreso("4", LocalDate.now().plusDays(60));
+        UUID vencido = ingreso("2", LocalDate.now().minusDays(1));
+        UUID inicial = jdbc.queryForObject("SELECT id FROM lote_insumo WHERE insumo_id = ? AND codigo = 'INICIAL'", UUID.class, azucar);
+        LoteProduccionResponse plan = planificar("1", "1000");      // necesita 10 kg
+
+        // Plan: propone FEFO (a 3, b 4, INICIAL 3) y ofrece como elegibles solo los lotes no vencidos.
+        var propuesto = planLotes.planLotes(plan.id()).getBody().insumos().get(0);
+        assertThat(propuesto.requerido()).isEqualByComparingTo("10");
+        assertThat(propuesto.propuesta()).extracting(com.planta.acopio.dto.PlanLotesProduccionResponse.Parte::loteId).containsExactly(a, b, inicial);
+        assertThat(propuesto.disponibles()).extracting(com.planta.acopio.dto.PlanLotesProduccionResponse.Disponible::loteId).containsExactlyInAnyOrder(a, b, inicial).doesNotContain(vencido);
+        assertThat(disponible(a)).isEqualByComparingTo("3");         // consultar el plan no toca nada
+
+        var elegir = (java.util.function.Function<List<Object[]>, com.planta.acopio.dto.IniciarLoteRequest>) partes -> new com.planta.acopio.dto.IniciarLoteRequest(List.of(
+                new com.planta.acopio.dto.IniciarLoteRequest.InsumoLotes(azucar, partes.stream()
+                        .map(p -> new com.planta.acopio.dto.IniciarLoteRequest.Parte((UUID) p[0], new BigDecimal((String) p[1]))).toList())));
+
+        // Elecciones invalidas: no suma lo necesario, lote vencido, repetido. Nada se consume.
+        assertThatThrownBy(() -> loteProduccionService.iniciar(plan.id(), elegir.apply(List.<Object[]>of(new Object[]{inicial, "9"}))))
+                .isInstanceOf(ValidacionNegocioException.class).hasMessageContaining("suman 9");
+        assertThatThrownBy(() -> loteProduccionService.iniciar(plan.id(), elegir.apply(List.<Object[]>of(new Object[]{vencido, "2"}, new Object[]{inicial, "8"}))))
+                .isInstanceOf(ValidacionNegocioException.class).hasMessageContaining("vencido");
+        assertThatThrownBy(() -> loteProduccionService.iniciar(plan.id(), elegir.apply(List.<Object[]>of(new Object[]{a, "1"}, new Object[]{a, "9"}))))
+                .isInstanceOf(ValidacionNegocioException.class);
+        assertThat(disponible(a)).isEqualByComparingTo("3");
+        assertThat(disponible(vencido)).isEqualByComparingTo("2");
+        invariantes();
+
+        // Eleccion valida: el INICIAL (6) y b (4) en lugar del orden FEFO.
+        loteProduccionService.iniciar(plan.id(), elegir.apply(List.<Object[]>of(new Object[]{inicial, "6"}, new Object[]{b, "4"})));
+
+        assertThat(disponible(a)).isEqualByComparingTo("3");         // a no se uso aunque vencia antes
+        assertThat(disponible(b)).isEqualByComparingTo("0");
+        assertThat(jdbc.queryForObject("SELECT cantidad_disponible FROM lote_insumo WHERE id = ?", BigDecimal.class, inicial)).isEqualByComparingTo("4");
+        assertThat(jdbc.queryForList("SELECT li.id FROM movimiento_insumo m JOIN lote_insumo li ON li.id = m.lote_insumo_id WHERE m.lote_produccion_id = ? "
+                + "AND m.tipo_movimiento = 'SALIDA_PRODUCCION' ORDER BY m.orden", UUID.class, plan.id())).containsExactlyInAnyOrder(inicial, b);
+        invariantes();
+        // El detalle del lote de produccion informa de los lotes que se eligieron.
+        assertThat(loteProduccionService.obtener(plan.id()).insumos().get(0).lotes()).extracting(l -> l.loteId()).containsExactlyInAnyOrder(inicial, b);
     }
 }

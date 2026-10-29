@@ -140,8 +140,11 @@ public class LoteProduccionController {
             @ApiResponse(responseCode = "422", description = "Un insumo del plan está desactivado")
     })
     @PostMapping("/{id}/iniciar")
-    public ResponseEntity<LoteProduccionResponse> iniciar(@PathVariable UUID id) {
-        return ResponseEntity.ok(loteProduccionService.iniciar(id));
+    public ResponseEntity<LoteProduccionResponse> iniciar(@PathVariable UUID id,
+            @org.springframework.web.bind.annotation.RequestBody(required = false) @jakarta.validation.Valid com.planta.acopio.dto.IniciarLoteRequest lotes) {
+        // Cuerpo opcional: sin el, el consumo se reparte solo en FEFO; con el, se eligen a mano los lotes de insumo (V43).
+        return ResponseEntity.ok(lotes == null || lotes.insumos() == null || lotes.insumos().isEmpty()
+                ? loteProduccionService.iniciar(id) : loteProduccionService.iniciar(id, lotes));
     }
 
     @Operation(
