@@ -26,8 +26,8 @@ public interface MovimientoInventarioLecheRepository extends JpaRepository<Movim
     // la consumio.
     @Query(value = "SELECT t.id, t.creado_en, t.tipo_movimiento, t.cantidad, t.saldo, t.documento_tipo, "
             + "t.documento_id, t.documento_fecha, t.referencia, t.usuario_nombre, t.motivo FROM ("
-            + "  SELECT m.id, m.creado_en, m.tipo_movimiento, m.cantidad, "
-            + "    SUM(m.cantidad) OVER (ORDER BY m.creado_en, m.id) AS saldo, "
+            + "  SELECT m.id, m.orden, m.creado_en, m.tipo_movimiento, m.cantidad, "
+            + "    SUM(m.cantidad) OVER (ORDER BY m.orden) AS saldo, "
             + "    CASE WHEN m.recepcion_planta_id IS NOT NULL THEN 'RECEPCION' ELSE 'LOTE' END AS documento_tipo, "
             + "    COALESCE(m.recepcion_planta_id, m.lote_produccion_id) AS documento_id, "
             + "    COALESCE(r.fecha, l.fecha) AS documento_fecha, "
@@ -44,7 +44,7 @@ public interface MovimientoInventarioLecheRepository extends JpaRepository<Movim
             + ") t "
             + "WHERE (CAST(:desde AS timestamp) IS NULL OR t.creado_en >= CAST(:desde AS timestamp)) "
             + "AND (CAST(:hasta AS timestamp) IS NULL OR t.creado_en < CAST(:hasta AS timestamp)) "
-            + "ORDER BY t.creado_en, t.id",
+            + "ORDER BY t.orden",
             countQuery = "SELECT count(*) FROM movimiento_inventario_leche m "
             + "WHERE (CAST(:desde AS timestamp) IS NULL OR m.creado_en >= CAST(:desde AS timestamp)) "
             + "AND (CAST(:hasta AS timestamp) IS NULL OR m.creado_en < CAST(:hasta AS timestamp))",

@@ -27,8 +27,8 @@ public interface MovimientoInventarioRepository extends JpaRepository<Movimiento
     // (el precio no es costo y el kardex no esta valorizado).
     @Query(value = "SELECT t.id, t.creado_en, t.tipo_movimiento, t.cantidad, t.saldo, t.documento_tipo, "
             + "t.documento_id, t.documento_fecha, t.referencia, t.usuario_nombre, t.motivo FROM ("
-            + "  SELECT m.id, m.creado_en, m.tipo_movimiento, m.cantidad, "
-            + "    SUM(m.cantidad) OVER (ORDER BY m.creado_en, m.id) AS saldo, "
+            + "  SELECT m.id, m.orden, m.creado_en, m.tipo_movimiento, m.cantidad, "
+            + "    SUM(m.cantidad) OVER (ORDER BY m.orden) AS saldo, "
             + "    CASE m.tipo_movimiento WHEN 'ENTRADA_PRODUCCION' THEN 'LOTE' WHEN 'SALIDA_VENTA' THEN 'VENTA' WHEN 'AJUSTE' THEN 'AJUSTE' ELSE 'SALIDA' END AS documento_tipo, "
             + "    COALESCE(l.id, v.id, a.id, s.id) AS documento_id, "
             + "    COALESCE(l.fecha, v.fecha, CAST(a.creado_en AS date), CAST(s.creado_en AS date)) AS documento_fecha, "
@@ -51,7 +51,7 @@ public interface MovimientoInventarioRepository extends JpaRepository<Movimiento
             + ") t "
             + "WHERE (CAST(:desde AS timestamp) IS NULL OR t.creado_en >= CAST(:desde AS timestamp)) "
             + "AND (CAST(:hasta AS timestamp) IS NULL OR t.creado_en < CAST(:hasta AS timestamp)) "
-            + "ORDER BY t.creado_en, t.id",
+            + "ORDER BY t.orden",
             countQuery = "SELECT count(*) FROM movimiento_inventario m WHERE m.presentacion_id = CAST(:presentacionId AS uuid) "
             + "AND (CAST(:desde AS timestamp) IS NULL OR m.creado_en >= CAST(:desde AS timestamp)) "
             + "AND (CAST(:hasta AS timestamp) IS NULL OR m.creado_en < CAST(:hasta AS timestamp))",
