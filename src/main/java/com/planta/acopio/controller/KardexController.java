@@ -64,8 +64,9 @@ public class KardexController {
     public ResponseEntity<KardexResponse> insumo(
             @PathVariable UUID insumoId,
             @RequestParam(required = false) LocalDate desde, @RequestParam(required = false) LocalDate hasta,
+            @Parameter(description = "Solo los movimientos de este lote (saldo y totales del lote)") @RequestParam(required = false) UUID loteId,
             @RequestParam(defaultValue = "0") int page, @RequestParam(defaultValue = "" + TAMANO_DEFECTO) int size) {
-        return ResponseEntity.ok(kardexService.insumo(insumoId, desde, hasta, pagina(page, size)));
+        return ResponseEntity.ok(kardexService.insumo(insumoId, desde, hasta, loteId, pagina(page, size)));
     }
 
     @Operation(summary = "Kardex de producto terminado por presentación", description = "Entradas por producción, salidas por venta y ajustes por conteo, con saldo acumulado. Solo cantidades: no incluye precios.")

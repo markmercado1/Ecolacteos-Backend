@@ -54,6 +54,15 @@ public class LoteInsumoConsultaService {
                 .map(l -> aRespuesta(l, hoy)).toList();
     }
 
+    /** Lotes con existencia por vencer (en `diasAlerta` dias o menos) o ya vencidos. */
+    @Transactional(readOnly = true)
+    public com.planta.acopio.dto.AlertasLotesResponse alertas() {
+        LocalDate hoy = reglaVencimiento.hoy();
+        List<LoteInsumoResponse> lotes = repository.venceHasta(hoy.plusDays(diasAlerta)).stream().map(l -> aRespuesta(l, hoy)).toList();
+        long vencidos = lotes.stream().filter(l -> "VENCIDO".equals(l.estado())).count();
+        return new com.planta.acopio.dto.AlertasLotesResponse(diasAlerta, lotes.size() - vencidos, vencidos, lotes);
+    }
+
     @Transactional(readOnly = true)
     public LoteInsumoResponse obtener(UUID loteId) {
         LoteInsumo l = repository.findById(loteId).orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + loteId));

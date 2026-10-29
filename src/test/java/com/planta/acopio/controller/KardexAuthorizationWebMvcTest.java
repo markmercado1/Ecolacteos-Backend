@@ -31,6 +31,7 @@ class KardexAuthorizationWebMvcTest {
     @Autowired private MockMvc mvc;
     @MockBean private KardexService kardexService;
     @MockBean private InventarioInsumoService inventarioInsumoService;
+    @MockBean private com.planta.acopio.service.LoteInsumoConsultaService loteInsumoConsultaService;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;
 

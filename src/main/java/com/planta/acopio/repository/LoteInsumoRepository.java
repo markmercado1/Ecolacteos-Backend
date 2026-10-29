@@ -39,6 +39,11 @@ public interface LoteInsumoRepository extends JpaRepository<LoteInsumo, UUID> {
     @Query("SELECT COALESCE(SUM(l.cantidadDisponible), 0) FROM LoteInsumo l WHERE l.insumo.id = :insumoId")
     BigDecimal sumarDisponible(@Param("insumoId") UUID insumoId);
 
+    /** Lotes con existencia que vencen a mas tardar en `limite` (incluye los ya vencidos), por fecha de vencimiento. */
+    @Query("SELECT l FROM LoteInsumo l WHERE l.cantidadDisponible > 0 AND l.fechaVencimiento IS NOT NULL AND l.fechaVencimiento <= :limite "
+            + "ORDER BY l.fechaVencimiento, l.insumo.nombre, l.codigo")
+    List<LoteInsumo> venceHasta(@Param("limite") java.time.LocalDate limite);
+
     @Query("SELECT COUNT(l) FROM LoteInsumo l WHERE l.insumo.id = :insumoId")
     long contarPorInsumo(@Param("insumoId") UUID insumoId);
 }

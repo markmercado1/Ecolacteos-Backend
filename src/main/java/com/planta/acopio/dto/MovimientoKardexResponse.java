@@ -22,5 +22,20 @@ public record MovimientoKardexResponse(
     LocalDate documentoFecha,
     String referencia,
     String usuarioNombre,
-    String motivo
-) {}
+    String motivo,
+    // V43/V44 (solo kardex de insumos; null en leche y producto terminado): lote al que afecta el movimiento, su proveedor y
+    // vencimiento, y el documento de ingreso (tipo y numero) del que vino ese lote.
+    UUID loteId,
+    String loteCodigo,
+    String proveedorNombre,
+    LocalDate fechaVencimiento,
+    String ingresoDocumentoTipo,
+    String ingresoDocumentoNumero
+) {
+    public MovimientoKardexResponse(UUID id, LocalDateTime fecha, String tipoMovimiento, BigDecimal entrada, BigDecimal salida, BigDecimal saldo,
+                                    String documentoTipo, UUID documentoId, LocalDate documentoFecha, String referencia, String usuarioNombre,
+                                    String motivo) {
+        this(id, fecha, tipoMovimiento, entrada, salida, saldo, documentoTipo, documentoId, documentoFecha, referencia, usuarioNombre, motivo,
+                null, null, null, null, null, null);
+    }
+}

@@ -82,6 +82,12 @@ public class InventarioInsumoController {
         return ResponseEntity.ok(loteConsultaService.listar(insumoId, soloConExistencia));
     }
 
+    @Operation(summary = "Alertas de vencimiento de lotes", description = "Lotes con existencia que vencen en los próximos días (configurable, 15 por defecto) o ya vencieron.")
+    @GetMapping("/lotes/alertas")
+    public ResponseEntity<com.planta.acopio.dto.AlertasLotesResponse> alertas() {
+        return ResponseEntity.ok(loteConsultaService.alertas());
+    }
+
     @Operation(summary = "Conteo físico por lote", description = "Solo ADMIN. La cantidad contada de cada lote; la diferencia de cada uno queda como un movimiento AJUSTE en ese lote, con el motivo obligatorio.")
     @ApiResponses({
             @ApiResponse(responseCode = "201", description = "Conteo registrado", content = @Content(schema = @Schema(implementation = ConteoInsumoResponse.class))),

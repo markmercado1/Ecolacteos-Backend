@@ -59,12 +59,18 @@ public class KardexService {
 
     @Transactional(readOnly = true)
     public KardexResponse insumo(UUID insumoId, LocalDate desde, LocalDate hasta, Pageable pageable) {
+        return insumo(insumoId, desde, hasta, null, pageable);
+    }
+
+    /** Con `loteId`, el kardex es el de ESE lote: sus movimientos, su saldo acumulado y sus totales. */
+    @Transactional(readOnly = true)
+    public KardexResponse insumo(UUID insumoId, LocalDate desde, LocalDate hasta, UUID loteId, Pageable pageable) {
         Insumo insumo = insumoRepository.findById(insumoId)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + insumoId));
         Rango r = rango(desde, hasta);
         return armar("INSUMO", insumo.getId(), insumo.getNombre(), insumo.getUnidadMedida(), desde, hasta,
-                insumoMovRepository.resumen(insumoId, r.desde(), r.hasta()),
-                insumoMovRepository.kardex(insumoId, r.desde(), r.hasta(), pageable));
+                insumoMovRepository.resumen(insumoId, loteId, r.desde(), r.hasta()),
+                insumoMovRepository.kardex(insumoId, loteId, r.desde(), r.hasta(), pageable));
     }
 
     @Transactional(readOnly = true)
@@ -102,11 +108,14 @@ public class KardexService {
     /** Columnas comunes de las tres consultas de kardex (ver MovimientoInsumoRepository.kardex()). */
     static MovimientoKardexResponse fila(Object[] f) {
         BigDecimal cantidad = decimal(f[3]);
+        boolean conLote = f.length > 11;   // solo el kardex de insumos trae las columnas de lote
         return new MovimientoKardexResponse(
                 (UUID) f[0], fechaHora(f[1]), (String) f[2],
                 cantidad.signum() > 0 ? cantidad : null,
                 cantidad.signum() < 0 ? cantidad.negate() : null,
-                decimal(f[4]), (String) f[5], (UUID) f[6], fecha(f[7]), (String) f[8], (String) f[9], (String) f[10]);
+                decimal(f[4]), (String) f[5], (UUID) f[6], fecha(f[7]), (String) f[8], (String) f[9], (String) f[10],
+                conLote ? (UUID) f[11] : null, conLote ? (String) f[12] : null, conLote ? (String) f[13] : null,
+                conLote && f[14] != null ? fecha(f[14]) : null, conLote ? (String) f[15] : null, conLote ? (String) f[16] : null);
     }
 
     // El driver de Postgres devuelve tipos distintos segun la columna/agregado (int, bigint, numeric): se
