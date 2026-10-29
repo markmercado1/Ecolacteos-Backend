@@ -88,7 +88,9 @@ class LoteInsumoIntegrationTest {
     /** Ingreso de `cantidad` kg; si se indica `vence`, el lote nuevo lo lleva (el ingreso con vencimiento llega en el paso 6). */
     private String ingreso(UUID insumoId, String cantidad, LocalDate vence) {
         inventarioInsumoService.registrarIngreso(insumoId, new IngresoInsumoRequest(new BigDecimal(cantidad), null, null));
-        String codigo = jdbc.queryForObject("SELECT codigo FROM lote_insumo WHERE insumo_id = ? ORDER BY creado_en DESC, id DESC LIMIT 1", String.class, insumoId);
+        // El ultimo movimiento (por `orden`, estable) es el del lote recien creado; por creado_en dos ingresos seguidos pueden empatar.
+        String codigo = jdbc.queryForObject("SELECT l.codigo FROM movimiento_insumo m JOIN lote_insumo l ON l.id = m.lote_insumo_id "
+                + "WHERE m.insumo_id = ? AND m.cantidad > 0 ORDER BY m.orden DESC LIMIT 1", String.class, insumoId);
         if (vence != null) {
             jdbc.update("UPDATE lote_insumo SET fecha_vencimiento = ? WHERE insumo_id = ? AND codigo = ?", vence, insumoId, codigo);
         }

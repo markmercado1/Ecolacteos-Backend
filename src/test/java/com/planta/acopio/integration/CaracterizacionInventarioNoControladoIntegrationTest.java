@@ -85,7 +85,8 @@ class CaracterizacionInventarioNoControladoIntegrationTest {
     // Valores de referencia obtenidos con el codigo previo a la Fase 1 (ver comentario de clase).
     private static final String ESPERADO_ESCENARIO = 
             "libro=ENTRADA_PRODUCCION:9,SALIDA_VENTA:-2,SALIDA_VENTA:-1,AJUSTE:-1,AJUSTE:3 stock=8 kardex[0+12-4=8] ENTRADA_PRODUCCION|e=9|s=null|saldo=9|LOTE|Lote de producción|null;SALIDA_VENTA|e=null|s=2|saldo=7|VENTA|Venta · PUBLICO|null;SALIDA_VENTA|e=null|s=1|saldo=6|VENTA|Venta · PUBLICO|null;AJUSTE|e=null|s=1|saldo=5|AJUSTE|Conteo físico: 6 → 5|Rotura;AJUSTE|e=3|s=null|saldo=8|AJUSTE|Conteo físico: 5 → 8|Hallazgo";
-    private static final String ESPERADO_HUELLA_TABLA = "190c4cfea16cc52bb7a4a60b42f411a6";
+    // V47 agrega la columna `orden` (y su indice unico) a movimiento_inventario; el escenario de arriba no cambia.
+    private static final String ESPERADO_HUELLA_TABLA = "adc6ef6ee25df6f4dc8254827f8ef4c4";
 
     @Autowired private ConciliacionService conciliacionService;
     @Autowired private RecetaService recetaService;

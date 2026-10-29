@@ -83,7 +83,7 @@ class SalidasConteosPorLoteIntegrationTest {
 
     private UUID ingreso(String cantidad, LocalDate vence) {
         inventarioInsumoService.registrarIngreso(insumo, new IngresoInsumoRequest(new BigDecimal(cantidad), null, null));
-        UUID lote = jdbc.queryForObject("SELECT id FROM lote_insumo WHERE insumo_id = ? ORDER BY creado_en DESC, id DESC LIMIT 1", UUID.class, insumo);
+        UUID lote = jdbc.queryForObject("SELECT l.id FROM movimiento_insumo m JOIN lote_insumo l ON l.id = m.lote_insumo_id WHERE m.insumo_id = ? AND m.cantidad > 0 ORDER BY m.orden DESC LIMIT 1", UUID.class, insumo);
         if (vence != null) jdbc.update("UPDATE lote_insumo SET fecha_vencimiento = ? WHERE id = ?", vence, lote);
         return lote;
     }
