@@ -51,6 +51,12 @@ public class MovimientoInsumo {
     public SalidaInventario getSalida() { return salida; }
     public void setSalida(SalidaInventario salida) { this.salida = salida; }
 
+    // V40: posicion del movimiento en el libro, asignada por la base (secuencia). Es el orden estable del kardex: dos
+    // movimientos con el mismo creado_en conservan el orden en que se escribieron.
+    @Column(name = "orden", insertable = false, updatable = false)
+    private Long orden;
+    public Long getOrden() { return orden; }
+
     public MovimientoInsumo() {}
 
     public UUID getId() { return id; }

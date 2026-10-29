@@ -15,7 +15,7 @@ import java.util.UUID;
 // Kardex de insumos (V19). Mismo contrato de columnas que los kardex de leche y producto terminado (ver
 // KardexService.fila()): id, creado_en, tipo, cantidad, saldo acumulado, documento_tipo, documento_id,
 // documento_fecha, referencia, usuario, motivo. El saldo se acumula con una funcion de ventana sobre TODO el
-// libro del insumo (orden creado_en, id) y recien despues se filtra por fechas y se pagina: el saldo de cada
+// libro del insumo (orden de escritura, columna `orden` de V40) y recien despues se filtra por fechas y se pagina: el saldo de cada
 // fila es siempre el real, aunque la pagina o el rango no empiecen en el primer movimiento.
 public interface MovimientoInsumoRepository extends JpaRepository<MovimientoInsumo, UUID> {
     java.util.Optional<MovimientoInsumo> findBySalidaId(UUID salidaId);
@@ -24,10 +24,12 @@ public interface MovimientoInsumoRepository extends JpaRepository<MovimientoInsu
     @Query("SELECT COALESCE(SUM(m.cantidad), 0) FROM MovimientoInsumo m WHERE m.insumo.id = :insumoId")
     BigDecimal sumarCantidad(@Param("insumoId") UUID insumoId);
 
+    // Orden del libro: `orden` (V40), unico y creciente en el orden de escritura. Antes era (creado_en, id) y el id es un
+    // UUID aleatorio: movimientos con el mismo instante salian en un orden arbitrario y el saldo acumulado, desordenado.
     @Query(value = "SELECT t.id, t.creado_en, t.tipo_movimiento, t.cantidad, t.saldo, t.documento_tipo, "
             + "t.documento_id, t.documento_fecha, t.referencia, t.usuario_nombre, t.motivo FROM ("
-            + "  SELECT m.id, m.creado_en, m.tipo_movimiento, m.cantidad, "
-            + "    SUM(m.cantidad) OVER (ORDER BY m.creado_en, m.id) AS saldo, "
+            + "  SELECT m.id, m.orden, m.creado_en, m.tipo_movimiento, m.cantidad, "
+            + "    SUM(m.cantidad) OVER (ORDER BY m.orden) AS saldo, "
             + "    CASE WHEN s.id IS NOT NULL THEN 'SALIDA' WHEN m.tipo_movimiento = 'SALIDA_PRODUCCION' THEN 'LOTE' ELSE m.tipo_movimiento END AS documento_tipo, "
             + "    COALESCE(s.id, l.id) AS documento_id, COALESCE(CAST(s.creado_en AS date), l.fecha) AS documento_fecha, "
             + "    CASE WHEN l.id IS NOT NULL THEN CONCAT('Lote de producción · ', p.nombre) WHEN s.id IS NOT NULL THEN CONCAT('Retiro de insumo · ', s.tipo) ELSE m.referencia END AS referencia, "
@@ -41,7 +43,7 @@ public interface MovimientoInsumoRepository extends JpaRepository<MovimientoInsu
             + ") t "
             + "WHERE (CAST(:desde AS timestamp) IS NULL OR t.creado_en >= CAST(:desde AS timestamp)) "
             + "AND (CAST(:hasta AS timestamp) IS NULL OR t.creado_en < CAST(:hasta AS timestamp)) "
-            + "ORDER BY t.creado_en, t.id",
+            + "ORDER BY t.orden",
             countQuery = "SELECT count(*) FROM movimiento_insumo m WHERE m.insumo_id = CAST(:insumoId AS uuid) "
             + "AND (CAST(:desde AS timestamp) IS NULL OR m.creado_en >= CAST(:desde AS timestamp)) "
             + "AND (CAST(:hasta AS timestamp) IS NULL OR m.creado_en < CAST(:hasta AS timestamp))",
