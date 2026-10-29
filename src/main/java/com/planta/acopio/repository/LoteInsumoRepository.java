@@ -18,6 +18,11 @@ public interface LoteInsumoRepository extends JpaRepository<LoteInsumo, UUID> {
 
     List<LoteInsumo> findByInsumoIdOrderByCreadoEnDescIdDesc(UUID insumoId);
 
+    /** Busqueda por codigo de lote (el propio o el del proveedor), sin distinguir mayusculas; `patron` ya viene con comodines y escapes (!). */
+    @Query("SELECT l FROM LoteInsumo l WHERE LOWER(l.codigo) LIKE :patron ESCAPE '!' OR LOWER(l.codigoProveedor) LIKE :patron ESCAPE '!' "
+            + "ORDER BY l.fechaIngreso DESC, l.codigo")
+    List<LoteInsumo> buscarPorCodigo(@Param("patron") String patron, org.springframework.data.domain.Pageable pageable);
+
     /** Id del insumo de un lote, sin cargar el lote (para bloquear primero el insumo y leer despues su existencia). */
     @Query("SELECT l.insumo.id FROM LoteInsumo l WHERE l.id = :loteId")
     Optional<UUID> insumoIdDe(@Param("loteId") UUID loteId);

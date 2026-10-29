@@ -66,6 +66,7 @@ class ProduccionFefoLotesIntegrationTest {
     @Autowired private RecetaService recetaService;
     @Autowired private LoteProduccionService loteProduccionService;
     @Autowired private ConciliacionService conciliacionService;
+    @Autowired private com.planta.acopio.service.TrazabilidadService trazabilidad;
     @Autowired private RolRepository rolRepository;
     @Autowired private UsuarioRepository usuarioRepository;
     @Autowired private UnidadRepository unidadRepository;
@@ -165,6 +166,16 @@ class ProduccionFefoLotesIntegrationTest {
         assertThat(usado.lotes()).extracting(InsumoUsadoResponse.LoteUsado::loteId).contains(vencePronto, venceLuego);
         assertThat(usado.lotes().stream().map(InsumoUsadoResponse.LoteUsado::cantidad).reduce(BigDecimal.ZERO, BigDecimal::add)).isEqualByComparingTo("10");
         loteProduccionService.finalizar(plan.id(), new FinalizarLoteRequest(List.of(new DetalleSalidaRequest(vaso.getId(), 9)), null));
+
+        // Trazabilidad hacia adelante: ¿en que lotes de produccion se uso el lote de insumo que vence pronto? Y hacia atras desde la produccion.
+        String codigoPronto = jdbc.queryForObject("SELECT codigo FROM lote_insumo WHERE id = ?", String.class, vencePronto);
+        var delLote = trazabilidad.buscar(codigoPronto).lotesInsumo().get(0);
+        assertThat(delLote.producciones()).hasSize(1);
+        assertThat(delLote.producciones().get(0).loteProduccionId()).isEqualTo(plan.id());
+        assertThat(delLote.producciones().get(0).cantidad()).isEqualByComparingTo("3");
+        var deLaProduccion = trazabilidad.buscar(plan.id().toString()).lotesProduccion();
+        assertThat(deLaProduccion).hasSize(1);
+        assertThat(deLaProduccion.get(0).insumos().get(0).lotes()).extracting(l -> l.loteId()).contains(vencePronto, venceLuego);
     }
 
     @Test
