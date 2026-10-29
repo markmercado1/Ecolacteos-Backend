@@ -171,6 +171,49 @@ public class InventarioInsumoService {
         }
     }
 
+    /** Un lote real del almacen con el que se reemplaza el saldo inicial. */
+    public record LineaSaldo(BigDecimal cantidad, String codigo, String loteProveedor, java.time.LocalDate vencimiento, ProveedorCompra proveedor) {}
+
+    /**
+     * Regulariza el lote INICIAL de un insumo con los lotes reales del almacen (con sus vencimientos): por cada linea crea el lote y mueve la
+     * cantidad del INICIAL al nuevo con DOS movimientos TRANSFERENCIA_LOTE (sale del INICIAL, entra al nuevo). El stock del insumo NO cambia:
+     * la suma de las lineas debe ser EXACTAMENTE el stock del sistema y el INICIAL debe ser su unico lote con existencia (si hay diferencia, se
+     * corrige antes con un conteo fisico). No se borra ni reescribe nada: el INICIAL queda en 0 (agotado) con su historial.
+     */
+    @Transactional
+    public List<LoteInsumo> regularizarSaldoInicial(UUID insumoId, List<LineaSaldo> lineas, String observacion) {
+        Insumo insumo = buscar(insumoId);
+        BigDecimal stock = bloquearStock(insumoId);
+        LoteInsumo inicial = loteRepository.findByInsumoIdAndCodigo(insumoId, LoteInsumo.CODIGO_INICIAL)
+                .orElseThrow(() -> new ValidacionNegocioException("«" + insumo.getNombre() + "» no tiene lote INICIAL que regularizar."));
+        BigDecimal suma = lineas.stream().map(LineaSaldo::cantidad).reduce(BigDecimal.ZERO, BigDecimal::add);
+        if (suma.compareTo(stock) != 0) {
+            throw new ValidacionNegocioException("La suma de los lotes (" + suma.stripTrailingZeros().toPlainString() + ") debe ser igual al stock del sistema ("
+                    + stock.stripTrailingZeros().toPlainString() + ") de «" + insumo.getNombre() + "»; corrige la diferencia antes con un conteo físico.");
+        }
+        if (inicial.getCantidadDisponible().compareTo(stock) != 0) {
+            throw new ConflictoNegocioException("«" + insumo.getNombre() + "» ya tiene lotes distintos del INICIAL con existencia: la regularización del saldo inicial no aplica.");
+        }
+        Usuario usuario = usuarioAutenticado();
+        String motivo = "Regularización del saldo inicial por lotes" + (observacion == null || observacion.isBlank() ? "" : ": " + observacion.trim());
+        List<LoteInsumo> creados = new java.util.ArrayList<>();
+        for (LineaSaldo l : lineas) {
+            LoteInsumo nuevo = loteService.crearLote(insumo, l.cantidad(), l.codigo(), l.loteProveedor(), l.vencimiento(), l.proveedor(), null, true);
+            // El lote nace sin existencia y la recibe del INICIAL con los dos movimientos (el kardex siempre cuadra).
+            nuevo.setCantidadDisponible(BigDecimal.ZERO);
+            loteService.descontar(inicial, l.cantidad());
+            loteService.sumar(nuevo, l.cantidad());
+            MovimientoInsumo sale = nuevoMovimiento(insumo, TipoMovimientoInsumo.TRANSFERENCIA_LOTE, l.cantidad().negate(), usuario, inicial);
+            sale.setMotivo(motivo);
+            movimientoRepository.save(sale);
+            MovimientoInsumo entra = nuevoMovimiento(insumo, TipoMovimientoInsumo.TRANSFERENCIA_LOTE, l.cantidad(), usuario, nuevo);
+            entra.setMotivo(motivo);
+            movimientoRepository.save(entra);
+            creados.add(nuevo);
+        }
+        return creados;
+    }
+
     /** Stock que se puede consumir en produccion: el de los lotes no vencidos (puede ser menor que insumo.stock). */
     public BigDecimal stockConsumible(Insumo insumo) {
         return loteService.stockConsumible(insumo);

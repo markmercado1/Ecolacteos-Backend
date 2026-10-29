@@ -22,6 +22,14 @@ public record VistaPreviaImportacionResponse(
         LocalDateTime expiraEn,
         boolean puedeConfirmar,
         List<ColumnaImportacionResponse> columnas,
-        List<FilaImportacionResponse> filas
+        List<FilaImportacionResponse> filas,
+        // true = con filas invalidas o duplicadas, confirmar exige elegir «importar solo las validas» (el tipo no importa a medias por defecto).
+        boolean exigeConfirmarParcial
 ) {
+    /** Compatibilidad: los tipos que importan lo valido y informan el resto no exigen confirmar a medias. */
+    public VistaPreviaImportacionResponse(UUID id, String tipo, String titulo, int version, String nombreArchivo, int totalFilas, int validas,
+                                          int invalidas, int duplicadas, int omitidas, LocalDateTime expiraEn, boolean puedeConfirmar,
+                                          List<ColumnaImportacionResponse> columnas, List<FilaImportacionResponse> filas) {
+        this(id, tipo, titulo, version, nombreArchivo, totalFilas, validas, invalidas, duplicadas, omitidas, expiraEn, puedeConfirmar, columnas, filas, false);
+    }
 }

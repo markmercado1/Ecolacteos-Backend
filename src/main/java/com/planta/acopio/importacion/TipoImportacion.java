@@ -59,4 +59,42 @@ public interface TipoImportacion<C> {
 
     /** Crea el registro llamando al servicio de negocio. Corre dentro de la transaccion de la confirmacion. */
     void crear(Map<String, String> valoresValidados);
+
+    // ------------------------------------------------------------------------------------------------------------------
+    // Ganchos opcionales para importaciones que crean MOVIMIENTOS (ingresos de insumos): por defecto no cambian nada, asi que
+    // proveedores, insumos y clientes funcionan exactamente igual que antes.
+
+    /**
+     * Si es false, un archivo con filas invalidas o duplicadas NO se confirma salvo que el usuario pida explicitamente importar solo las
+     * validas (confirmar con soloValidas=true). Por defecto true: se importan las validas y se informan las demas.
+     */
+    default boolean permiteImportacionParcial() {
+        return true;
+    }
+
+    /** Un archivo ya confirmado (mismo contenido, mismo tipo) no se puede cargar otra vez: evita duplicar movimientos. */
+    default boolean rechazaArchivoRepetido() {
+        return false;
+    }
+
+    /**
+     * Clave del grupo al que pertenece una fila valida (p. ej. el documento de ingreso: proveedor + tipo + numero); null = la fila va
+     * sola. Las filas de un grupo se crean JUNTAS (crearGrupo) y, si alguna es invalida, ninguna se importa.
+     */
+    default String claveGrupo(Map<String, String> valoresValidados) {
+        return null;
+    }
+
+    /** Comprobacion extra de un grupo de varias filas validas; devuelve el motivo si el grupo no se puede importar. */
+    default Optional<String> validarGrupo(List<Map<String, String>> filasDelGrupo) {
+        return Optional.empty();
+    }
+
+    /**
+     * Crea un grupo de filas validas (o una sola fila sin grupo) llamando al servicio de negocio. `huellaArchivo` es el SHA-256 del
+     * archivo: sirve para derivar identificadores estables y que repetir la importacion nunca duplique. Por defecto crea cada fila.
+     */
+    default void crearGrupo(String clave, List<Map<String, String>> filas, String huellaArchivo) {
+        filas.forEach(this::crear);
+    }
 }

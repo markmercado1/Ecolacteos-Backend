@@ -14,6 +14,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RequestPart;
 import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.multipart.MultipartFile;
@@ -53,8 +54,9 @@ public class ImportacionController {
     @Operation(summary = "Confirmar una importación",
             description = "Crea las filas válidas de la vista previa en una sola transacción (todo o nada). Repetir la confirmación devuelve el resultado guardado sin crear nada otra vez.")
     @PostMapping("/{id}/confirmar")
-    public ResponseEntity<ResultadoImportacionResponse> confirmar(@PathVariable UUID id) {
-        return ResponseEntity.ok(service.confirmar(id));
+    public ResponseEntity<ResultadoImportacionResponse> confirmar(@PathVariable UUID id,
+            @Parameter(description = "Solo para los tipos que no importan a medias (ingresos): confirma importar únicamente las filas válidas") @RequestParam(defaultValue = "false") boolean soloValidas) {
+        return ResponseEntity.ok(service.confirmar(id, soloValidas));
     }
 
     @Operation(summary = "Descargar el reporte de filas no importadas", description = "Número de fila, resultado, motivo y valores de las filas inválidas, duplicadas u omitidas.")

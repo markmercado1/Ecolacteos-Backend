@@ -29,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Optional;
 import java.util.Map;
 import java.util.UUID;
 
@@ -94,6 +95,12 @@ public class ImportacionService {
         repository.borrarNoConfirmadasVencidas(LocalDateTime.now().minusDays(1));
 
         try (LectorExcelSeguro.LibroSeguro seguro = lector.abrir(archivo)) {
+            if (tipo.rechazaArchivoRepetido()) {
+                repository.findFirstByTipoAndHashArchivoAndEstadoOrderByConfirmadoEnAsc(tipo.codigo(), seguro.sha256(), EstadoImportacion.CONFIRMADA).ifPresent(previa -> {
+                    throw new ConflictoNegocioException("Este archivo ya se importó el " + previa.getConfirmadoEn().toLocalDate() + " (" + previa.getUsuario().getNombre()
+                            + "): volver a subirlo duplicaría los movimientos. Si es otro ingreso, cambia al menos una fila.");
+                });
+            }
             LectorPlantilla.Lectura lectura = lectorPlantilla.leer(seguro.libro(), tipo);
             C contexto = tipo.preparar(lectura.filas());
 
@@ -113,6 +120,8 @@ public class ImportacionService {
                 }
                 filas.add(new FilaImportacion(cruda.numero(), estado, resultado.valores(), mensajes));
             }
+
+            validarGrupos(tipo, filas);
 
             ImportacionExcel importacion = new ImportacionExcel();
             importacion.setTipo(tipo.codigo());
@@ -139,6 +148,11 @@ public class ImportacionService {
 
     @Transactional
     public ResultadoImportacionResponse confirmar(UUID id) {
+        return confirmar(id, false);
+    }
+
+    @Transactional
+    public ResultadoImportacionResponse confirmar(UUID id, boolean soloValidas) {
         ImportacionExcel importacion = repository.bloquear(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("No existe esa importación. Vuelve a cargar el archivo."));
         verificarDueno(importacion);
@@ -157,24 +171,44 @@ public class ImportacionService {
             throw new ConflictoNegocioException("La plantilla cambió de versión después de esta vista previa. Vuelve a cargar el archivo.");
         }
 
-        List<FilaImportacion> procesadas = new ArrayList<>();
+        if (!tipo.permiteImportacionParcial() && !soloValidas && (importacion.getInvalidas() > 0 || importacion.getDuplicadas() > 0)) {
+            throw new ConflictoNegocioException("El archivo tiene " + (importacion.getInvalidas() + importacion.getDuplicadas())
+                    + " fila(s) con error. Corrígelo y vuelve a cargarlo, o confirma expresamente importar solo las filas válidas.");
+        }
+
+        List<FilaImportacion> filasVistas = leerFilas(importacion);
+        Map<Integer, FilaImportacion> resultado = new java.util.TreeMap<>();
+        // Las filas validas se agrupan (p. ej. por documento de ingreso): cada grupo se crea junto o se omite completo.
+        Map<String, List<FilaImportacion>> grupos = new java.util.LinkedHashMap<>();
+        for (FilaImportacion fila : filasVistas) {
+            if (fila.estado() != EstadoFila.VALIDA) {
+                resultado.put(fila.fila(), fila);
+                continue;
+            }
+            String clave = tipo.claveGrupo(fila.valores());
+            grupos.computeIfAbsent(clave == null ? "#fila-" + fila.fila() : clave, k -> new ArrayList<>()).add(fila);
+        }
         int creadas = 0;
         int omitidasAlConfirmar = 0;
-        for (FilaImportacion fila : leerFilas(importacion)) {
-            if (fila.estado() != EstadoFila.VALIDA) {
-                procesadas.add(fila);
+        for (Map.Entry<String, List<FilaImportacion>> g : grupos.entrySet()) {
+            String motivo = null;
+            for (FilaImportacion fila : g.getValue()) {
+                var conflicto = tipo.conflictoAlConfirmar(fila.valores());
+                if (conflicto.isPresent()) {
+                    motivo = conflicto.get();
+                    break;
+                }
+            }
+            if (motivo != null) {
+                for (FilaImportacion fila : g.getValue()) resultado.put(fila.fila(), fila.conEstado(EstadoFila.OMITIDA, motivo));
+                omitidasAlConfirmar += g.getValue().size();
                 continue;
             }
-            var conflicto = tipo.conflictoAlConfirmar(fila.valores());
-            if (conflicto.isPresent()) {
-                procesadas.add(fila.conEstado(EstadoFila.OMITIDA, conflicto.get()));
-                omitidasAlConfirmar++;
-                continue;
-            }
-            crearFila(tipo, fila, id);
-            procesadas.add(fila.conEstado(EstadoFila.CREADA, null));
-            creadas++;
+            crearGrupoDeFilas(tipo, g.getKey(), g.getValue(), importacion.getHashArchivo(), id);
+            for (FilaImportacion fila : g.getValue()) resultado.put(fila.fila(), fila.conEstado(EstadoFila.CREADA, null));
+            creadas += g.getValue().size();
         }
+        List<FilaImportacion> procesadas = new ArrayList<>(resultado.values());
 
         importacion.setEstado(EstadoImportacion.CONFIRMADA);
         importacion.setCreadas(creadas);
@@ -189,10 +223,11 @@ public class ImportacionService {
         return resultado(importacion, tipo, procesadas, false);
     }
 
-    /** Crea una fila con el servicio de negocio. Cualquier fallo revierte TODA la importacion (la transaccion es una sola). */
-    private void crearFila(TipoImportacion<?> tipo, FilaImportacion fila, UUID id) {
+    /** Crea un grupo de filas (o una sola) con el servicio de negocio. Cualquier fallo revierte TODA la importacion. */
+    private void crearGrupoDeFilas(TipoImportacion<?> tipo, String clave, List<FilaImportacion> filas, String huella, UUID id) {
+        FilaImportacion fila = filas.get(0);
         try {
-            tipo.crear(fila.valores());
+            tipo.crearGrupo(clave, filas.stream().map(FilaImportacion::valores).toList(), huella);
             // Fuerza los INSERT ahora para que una violacion de unicidad se atribuya a ESTA fila y no a la confirmacion final.
             entityManager.flush();
         } catch (ValidacionNegocioException | ConflictoNegocioException | RecursoNoEncontradoException | RecursoInactivoException e) {
@@ -244,10 +279,58 @@ public class ImportacionService {
 
     // ------------------------------------------------------------------------------------------ apoyo
 
+    /**
+     * Un grupo (p. ej. un documento de ingreso con varias lineas) se importa completo o no se importa: si alguna de sus filas es invalida o
+     * duplicada, las demas filas validas del grupo tambien quedan fuera, con el motivo.
+     */
+    private void validarGrupos(TipoImportacion<?> tipo, List<FilaImportacion> filas) {
+        Map<String, List<Integer>> indices = new java.util.LinkedHashMap<>();
+        Map<String, Integer> primeraConError = new HashMap<>();
+        for (int i = 0; i < filas.size(); i++) {
+            FilaImportacion f = filas.get(i);
+            String clave = f.estado() == EstadoFila.VALIDA ? tipo.claveGrupo(f.valores()) : null;
+            if (clave != null) indices.computeIfAbsent(clave, k -> new ArrayList<>()).add(i);
+        }
+        for (Map.Entry<String, List<Integer>> g : indices.entrySet()) {
+            Optional<String> problema = g.getValue().size() > 1
+                    ? tipo.validarGrupo(g.getValue().stream().map(i -> filas.get(i).valores()).toList()) : Optional.empty();
+            if (problema.isPresent()) {
+                for (int i : g.getValue()) filas.set(i, new FilaImportacion(filas.get(i).fila(), EstadoFila.INVALIDA, filas.get(i).valores(), List.of(problema.get())));
+            }
+        }
+        // Filas que comparten documento con una fila rechazada (por validacion propia): se rechazan juntas.
+        Map<String, Integer> conError = new HashMap<>();
+        for (FilaImportacion f : filas) {
+            if (f.estado() == EstadoFila.INVALIDA || f.estado() == EstadoFila.DUPLICADA) {
+                String clave = f.valores() == null ? null : claveSegura(tipo, f.valores());
+                if (clave != null) conError.putIfAbsent(clave, f.fila());
+            }
+        }
+        for (int i = 0; i < filas.size(); i++) {
+            FilaImportacion f = filas.get(i);
+            if (f.estado() != EstadoFila.VALIDA) continue;
+            String clave = tipo.claveGrupo(f.valores());
+            Integer fila = clave == null ? null : conError.get(clave);
+            if (fila != null) {
+                filas.set(i, new FilaImportacion(f.fila(), EstadoFila.INVALIDA, f.valores(),
+                        List.of("Otra fila del mismo documento tiene error (fila " + fila + "): el documento se importa completo o no se importa.")));
+            }
+        }
+    }
+
+    private static String claveSegura(TipoImportacion<?> tipo, Map<String, String> valores) {
+        try {
+            return tipo.claveGrupo(valores);
+        } catch (RuntimeException e) {
+            return null;   // una fila invalida puede traer valores sin normalizar
+        }
+    }
+
     private VistaPreviaImportacionResponse vistaPrevia(ImportacionExcel i, TipoImportacion<?> tipo, List<FilaImportacion> filas) {
         return new VistaPreviaImportacionResponse(i.getId(), tipo.codigo(), tipo.titulo(), tipo.version(), i.getNombreArchivo(),
                 i.getTotalFilas(), i.getValidas(), i.getInvalidas(), i.getDuplicadas(), i.getOmitidas(), i.getExpiraEn(),
-                i.getValidas() > 0, columnasDe(tipo), filas.stream().map(FilaImportacionResponse::de).toList());
+                i.getValidas() > 0, columnasDe(tipo), filas.stream().map(FilaImportacionResponse::de).toList(),
+                !tipo.permiteImportacionParcial() && (i.getInvalidas() > 0 || i.getDuplicadas() > 0));
     }
 
     private ResultadoImportacionResponse resultado(ImportacionExcel i, TipoImportacion<?> tipo, List<FilaImportacion> filas, boolean repetida) {

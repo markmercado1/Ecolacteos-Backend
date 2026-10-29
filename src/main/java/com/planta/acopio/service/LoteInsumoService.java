@@ -58,11 +58,20 @@ public class LoteInsumoService {
     /** Igual, con el proveedor y el documento de ingreso de origen (V44). Un ingreso nuevo no puede traer un vencimiento ya pasado. */
     public LoteInsumo crearLote(Insumo insumo, BigDecimal cantidad, String codigo, String codigoProveedor, LocalDate vencimiento,
                                 ProveedorCompra proveedor, DocumentoIngreso documento) {
+        return crearLote(insumo, cantidad, codigo, codigoProveedor, vencimiento, proveedor, documento, false);
+    }
+
+    /**
+     * `permitirVencido` solo para regularizar el saldo inicial: lo que hoy hay en el almacen puede traer un vencimiento ya pasado (es stock
+     * real que se conoce recien ahora); un ingreso nuevo nunca lo permite.
+     */
+    public LoteInsumo crearLote(Insumo insumo, BigDecimal cantidad, String codigo, String codigoProveedor, LocalDate vencimiento,
+                                ProveedorCompra proveedor, DocumentoIngreso documento, boolean permitirVencido) {
         if (cantidad == null || cantidad.signum() <= 0) {
             throw new ValidacionNegocioException("La cantidad de un lote debe ser mayor a 0.");
         }
         LocalDate hoy = reglaVencimiento.hoy();
-        if (vencimiento != null && vencimiento.isBefore(hoy)) {
+        if (!permitirVencido && vencimiento != null && vencimiento.isBefore(hoy)) {
             throw new ValidacionNegocioException("El vencimiento del lote de " + insumo.getNombre() + " (" + vencimiento
                     + ") ya pasó: un ingreso no puede traer un lote vencido.");
         }

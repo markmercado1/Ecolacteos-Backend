@@ -106,7 +106,7 @@ class ImportacionControllerWebMvcTest {
                 .andExpect(jsonPath("$.id").value(id.toString()))
                 .andExpect(jsonPath("$.validas").value(2))
                 .andExpect(jsonPath("$.puedeConfirmar").value(true));
-        verify(service, never()).confirmar(any());
+        verify(service, never()).confirmar(any(), org.mockito.ArgumentMatchers.anyBoolean());
     }
 
     @Test
@@ -127,7 +127,7 @@ class ImportacionControllerWebMvcTest {
 
     @Test
     void confirmarDevuelveElResultadoYUnConflictoSeInformaConSuMensaje() throws Exception {
-        when(service.confirmar(id)).thenReturn(new ResultadoImportacionResponse(id, "proveedores", "Proveedores", 2, 1, 0, 0, false,
+        when(service.confirmar(id, false)).thenReturn(new ResultadoImportacionResponse(id, "proveedores", "Proveedores", 2, 1, 0, 0, false,
                 LocalDateTime.now(), List.of(), List.of()));
         mvc.perform(post("/api/admin/importaciones/" + id + "/confirmar").with(user("a").roles("ADMIN")))
                 .andExpect(status().isOk())
@@ -135,7 +135,7 @@ class ImportacionControllerWebMvcTest {
                 .andExpect(jsonPath("$.yaConfirmada").value(false));
 
         UUID otro = UUID.randomUUID();
-        when(service.confirmar(otro)).thenThrow(new ConflictoNegocioException("No se creó ningún registro. La fila 4 no se pudo guardar."));
+        when(service.confirmar(otro, false)).thenThrow(new ConflictoNegocioException("No se creó ningún registro. La fila 4 no se pudo guardar."));
         mvc.perform(post("/api/admin/importaciones/" + otro + "/confirmar").with(user("a").roles("ADMIN")))
                 .andExpect(status().isConflict())
                 .andExpect(jsonPath("$.mensaje").value(org.hamcrest.Matchers.containsString("No se creó ningún registro")));
