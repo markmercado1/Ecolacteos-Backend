@@ -46,6 +46,15 @@ public final class BusquedaTexto {
         return sb.toString().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * Clave para comparar nombres como "el mismo": sin mayusculas ni acentos, sin espacios sobrantes (al inicio, al final ni
+     * repetidos). "Azúcar ", "azucar" y "AZUCAR" tienen la misma clave. Es la comparacion que usan la validacion de insumos
+     * duplicados y la importacion de Excel.
+     */
+    public static String clave(String texto) {
+        return texto == null ? "" : plegar(texto.trim().replaceAll("\\s+", " "));
+    }
+
     public static String patronLike(String termino) {
         if (termino == null || termino.isBlank()) {
             return null;

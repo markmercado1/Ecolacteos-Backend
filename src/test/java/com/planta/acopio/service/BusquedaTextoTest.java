@@ -54,4 +54,14 @@ class BusquedaTextoTest {
         assertThat(BusquedaTexto.patronLikeOTodos(null)).isEqualTo("%");
         assertThat(BusquedaTexto.patronLikeOTodos("Ab")).isEqualTo("%ab%");
     }
+
+    @Test
+    void claveIgualaMayusculasTildesYEspacios() {
+        assertThat(BusquedaTexto.clave("Azúcar")).isEqualTo("azucar");
+        assertThat(BusquedaTexto.clave("  AZUCAR ")).isEqualTo("azucar");
+        assertThat(BusquedaTexto.clave("Leche   en	polvo")).isEqualTo("leche en polvo");
+        assertThat(BusquedaTexto.clave("Piña")).isEqualTo("pina");
+        assertThat(BusquedaTexto.clave(null)).isEmpty();
+        assertThat(BusquedaTexto.clave("Sal")).isNotEqualTo(BusquedaTexto.clave("Sal fina"));
+    }
 }

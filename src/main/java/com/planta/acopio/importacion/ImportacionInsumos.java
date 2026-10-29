@@ -82,7 +82,7 @@ public class ImportacionInsumos implements TipoImportacion<Set<String>> {
     private Set<String> nombresExistentes() {
         Set<String> nombres = new HashSet<>();
         for (String nombre : insumoRepository.todosLosNombres()) {
-            nombres.add(BusquedaTexto.plegar(ReglasCelda.limpiar(nombre)));
+            nombres.add(BusquedaTexto.clave(nombre));
         }
         return nombres;
     }
@@ -100,7 +100,7 @@ public class ImportacionInsumos implements TipoImportacion<Set<String>> {
         valores.put("nombre", nombre);
         valores.put("unidad", unidad);
         valores.put("stock", stock);
-        if (existentes.contains(BusquedaTexto.plegar(nombre))) {
+        if (existentes.contains(BusquedaTexto.clave(nombre))) {
             return ResultadoFila.duplicada(valores, "Ya existe un insumo llamado «" + nombre + "» (activo o desactivado). No se modifica su stock.");
         }
         return ResultadoFila.valida(valores);
@@ -126,12 +126,12 @@ public class ImportacionInsumos implements TipoImportacion<Set<String>> {
 
     @Override
     public String claveUnica(Map<String, String> valores) {
-        return BusquedaTexto.plegar(valores.get("nombre"));
+        return BusquedaTexto.clave(valores.get("nombre"));
     }
 
     @Override
     public Optional<String> conflictoAlConfirmar(Map<String, String> valores) {
-        if (nombresExistentes().contains(BusquedaTexto.plegar(valores.get("nombre")))) {
+        if (nombresExistentes().contains(BusquedaTexto.clave(valores.get("nombre")))) {
             return Optional.of("Ya existe un insumo llamado «" + valores.get("nombre") + "» (se registró después de la vista previa). No se modifica su stock.");
         }
         return Optional.empty();

@@ -3,6 +3,7 @@ package com.planta.acopio.service;
 import com.planta.acopio.dto.InsumoRequest;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.entity.Insumo;
+import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.InsumoRepository;
@@ -32,8 +33,10 @@ public class InsumoService {
 
     @Transactional
     public InsumoResponse crear(InsumoRequest dto) {
+        String nombre = limpiar(dto.nombre());
+        validarNombreUnico(nombre, null);
         Insumo i = new Insumo();
-        i.setNombre(dto.nombre());
+        i.setNombre(nombre);
         i.setUnidadMedida(dto.unidadMedida());
         i.setStock(dto.stock() != null ? dto.stock() : BigDecimal.ZERO);
         Insumo guardado = repository.save(i);
@@ -60,7 +63,13 @@ public class InsumoService {
             throw new ValidacionNegocioException("El stock de un insumo no se edita desde el catálogo: registra un "
                     + "ingreso o un ajuste por conteo físico en Inventario para que quede en el kardex.");
         }
-        i.setNombre(dto.nombre());
+        String nombre = limpiar(dto.nombre());
+        // Solo se valida si el nombre CAMBIA de verdad (no solo mayusculas, tildes o espacios): un insumo que ya
+        // convive con un duplicado historico sigue siendo editable (p. ej. su unidad) hasta que se fusionen.
+        if (!BusquedaTexto.clave(nombre).equals(BusquedaTexto.clave(i.getNombre()))) {
+            validarNombreUnico(nombre, i.getId());
+        }
+        i.setNombre(nombre);
         i.setUnidadMedida(dto.unidadMedida());
         return toResponse(i);
     }
@@ -78,6 +87,29 @@ public class InsumoService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + id));
         i.setActivo(true);
         return toResponse(i);
+    }
+
+    /** Nombre sin espacios sobrantes al inicio, al final ni repetidos en medio. */
+    private static String limpiar(String nombre) {
+        return nombre.trim().replaceAll("\\s+", " ");
+    }
+
+    /**
+     * Un insumo no puede llamarse igual que otro (activo o desactivado) salvo por mayusculas, tildes o espacios:
+     * "azucar" y "Azúcar" son el mismo insumo y partirlo en dos separa su stock y su kardex. Verificacion del servicio;
+     * el respaldo en la base de datos llega junto con la herramienta de fusion.
+     */
+    private void validarNombreUnico(String nombre, UUID idPropio) {
+        String clave = BusquedaTexto.clave(nombre);
+        for (Insumo otro : repository.findAll()) {
+            if (otro.getId().equals(idPropio) || !BusquedaTexto.clave(otro.getNombre()).equals(clave)) {
+                continue;
+            }
+            throw new ConflictoNegocioException("Ya existe un insumo llamado «" + otro.getNombre() + "»"
+                    + (Boolean.TRUE.equals(otro.getActivo()) ? "" : " (desactivado)")
+                    + ". Los nombres se comparan sin mayúsculas, tildes ni espacios sobrantes: usa ese insumo"
+                    + (Boolean.TRUE.equals(otro.getActivo()) ? "." : " (puedes reactivarlo en Catálogos)."));
+        }
     }
 
     private InsumoResponse toResponse(Insumo i) {
