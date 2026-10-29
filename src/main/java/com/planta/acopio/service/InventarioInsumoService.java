@@ -6,7 +6,9 @@ import com.planta.acopio.dto.IngresoInsumoRequest;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.dto.MovimientoInsumoResponse;
 import com.planta.acopio.entity.Insumo;
+import com.planta.acopio.entity.LoteInsumo;
 import com.planta.acopio.entity.LoteProduccion;
+import com.planta.acopio.entity.MotivoSalida;
 import com.planta.acopio.entity.MovimientoInsumo;
 import com.planta.acopio.entity.TipoMovimientoInsumo;
 import com.planta.acopio.entity.Usuario;
@@ -46,12 +48,14 @@ public class InventarioInsumoService {
     private final InsumoRepository insumoRepository;
     private final MovimientoInsumoRepository movimientoRepository;
     private final UsuarioRepository usuarioRepository;
+    private final LoteInsumoService loteService;
 
     public InventarioInsumoService(InsumoRepository insumoRepository, MovimientoInsumoRepository movimientoRepository,
-                                   UsuarioRepository usuarioRepository) {
+                                   UsuarioRepository usuarioRepository, LoteInsumoService loteService) {
         this.insumoRepository = insumoRepository;
         this.movimientoRepository = movimientoRepository;
         this.usuarioRepository = usuarioRepository;
+        this.loteService = loteService;
     }
 
     /** Inventario de insumos: activos e inactivos que aun conservan stock. */
@@ -74,7 +78,9 @@ public class InventarioInsumoService {
             throw new ValidacionNegocioException("El ingreso supera el stock máximo registrable para el insumo.");
         }
         insumoRepository.fijarStock(insumoId, nuevo);
-        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.INGRESO, dto.cantidad(), usuarioAutenticado());
+        // V43: cada ingreso crea su lote (codigo autogenerado, sin vencimiento mientras el ingreso no lo informe).
+        LoteInsumo lote = loteService.crearLote(insumo, dto.cantidad(), null, null, null);
+        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.INGRESO, dto.cantidad(), usuarioAutenticado(), lote);
         m.setReferencia(normalizar(dto.referencia()));
         m.setMotivo(normalizar(dto.observacion()));
         return toResponse(movimientoRepository.save(m), anterior, nuevo);
@@ -95,9 +101,24 @@ public class InventarioInsumoService {
                     + anterior.stripTrailingZeros().toPlainString() + "); no hay ninguna diferencia que ajustar.");
         }
         insumoRepository.fijarStock(insumoId, dto.cantidadFisica());
-        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.AJUSTE, variacion, usuarioAutenticado());
-        m.setMotivo(dto.motivo().trim());
-        return toResponse(movimientoRepository.save(m), anterior, dto.cantidadFisica());
+        Usuario usuario = usuarioAutenticado();
+        String motivo = dto.motivo().trim();
+        MovimientoInsumo ultimo = null;
+        if (variacion.signum() < 0) {
+            // Conteo en contra: sale de los lotes en FEFO (un movimiento por lote). El conteo por lote llega en el paso 7.
+            for (LoteInsumoService.Asignacion a : loteService.asignar(insumo, variacion.negate(), LoteInsumoService.Prioridad.RETIRO_GENERAL)) {
+                MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.AJUSTE, a.cantidad().negate(), usuario, a.lote());
+                m.setMotivo(motivo);
+                ultimo = movimientoRepository.save(m);
+            }
+        } else {
+            LoteInsumo lote = loteService.loteParaEntradaGeneral(insumo);
+            loteService.sumar(lote, variacion);
+            MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.AJUSTE, variacion, usuario, lote);
+            m.setMotivo(motivo);
+            ultimo = movimientoRepository.save(m);
+        }
+        return toResponse(ultimo, anterior, dto.cantidadFisica());
     }
 
     /**
@@ -116,17 +137,24 @@ public class InventarioInsumoService {
                 throw new ValidacionNegocioException("Stock insuficiente de " + e.getKey().getNombre()
                         + ": cambió mientras se procesaba la producción. Revisa el stock y vuelve a intentarlo.");
             }
-            MovimientoInsumo m = nuevoMovimiento(e.getKey(), TipoMovimientoInsumo.SALIDA_PRODUCCION,
-                    e.getValue().negate(), usuario);
-            m.setLoteProduccion(lote);
-            movimientoRepository.save(m);
+            // V43: el consumo sale de lotes concretos (FEFO, sin lotes vencidos): un movimiento por lote usado. El UPDATE de
+            // arriba ya tiene bloqueada la fila del insumo, asi que nadie mas toca sus lotes mientras se reparte.
+            for (LoteInsumoService.Asignacion a : loteService.asignar(e.getKey(), e.getValue(), LoteInsumoService.Prioridad.CONSUMO)) {
+                MovimientoInsumo m = nuevoMovimiento(e.getKey(), TipoMovimientoInsumo.SALIDA_PRODUCCION,
+                        a.cantidad().negate(), usuario, a.lote());
+                m.setLoteProduccion(lote);
+                movimientoRepository.save(m);
+            }
         }
     }
 
     /** Stock con el que nace un insumo nuevo (alta en Catalogos): primer movimiento de su kardex. */
     public void registrarSaldoInicial(Insumo insumo, BigDecimal cantidad) {
         if (cantidad == null || cantidad.signum() <= 0) return;
-        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.SALDO_INICIAL, cantidad, usuarioAutenticado());
+        LoteInsumo lote = loteService.loteInicial(insumo);
+        loteService.sumar(lote, cantidad);
+        lote.setCantidadInicial(lote.getCantidadInicial().add(cantidad));
+        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.SALDO_INICIAL, cantidad, usuarioAutenticado(), lote);
         m.setMotivo("Stock inicial al crear el insumo");
         movimientoRepository.save(m);
     }
@@ -139,11 +167,19 @@ public class InventarioInsumoService {
             throw new ValidacionNegocioException("Stock insuficiente para registrar la salida del insumo.");
         }
         insumoRepository.fijarStock(id, anterior.subtract(salida.getCantidad()));
-        MovimientoInsumo m = nuevoMovimiento(salida.getInsumo(),
-                TipoMovimientoInsumo.valueOf("SALIDA_" + salida.getTipo().name()), salida.getCantidad().negate(), salida.getUsuario());
-        m.setMotivo(salida.getMotivo());
-        m.setSalida(salida);
-        return movimientoRepository.save(m).getId();
+        // V43: la salida sale de lotes (un movimiento por lote). Por vencimiento: primero los lotes vencidos.
+        LoteInsumoService.Prioridad prioridad = salida.getTipo() == MotivoSalida.VENCIMIENTO
+                ? LoteInsumoService.Prioridad.RETIRO_VENCIDOS_PRIMERO : LoteInsumoService.Prioridad.RETIRO_GENERAL;
+        UUID primero = null;
+        for (LoteInsumoService.Asignacion a : loteService.asignar(salida.getInsumo(), salida.getCantidad(), prioridad)) {
+            MovimientoInsumo m = nuevoMovimiento(salida.getInsumo(),
+                    TipoMovimientoInsumo.valueOf("SALIDA_" + salida.getTipo().name()), a.cantidad().negate(), salida.getUsuario(), a.lote());
+            m.setMotivo(salida.getMotivo());
+            m.setSalida(salida);
+            UUID guardado = movimientoRepository.save(m).getId();
+            if (primero == null) primero = guardado;
+        }
+        return primero;
     }
 
     private Insumo buscar(UUID id) {
@@ -160,9 +196,11 @@ public class InventarioInsumoService {
                 .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + id));
     }
 
-    private static MovimientoInsumo nuevoMovimiento(Insumo insumo, TipoMovimientoInsumo tipo, BigDecimal cantidad, Usuario usuario) {
+    private static MovimientoInsumo nuevoMovimiento(Insumo insumo, TipoMovimientoInsumo tipo, BigDecimal cantidad, Usuario usuario,
+                                                    LoteInsumo lote) {
         MovimientoInsumo m = new MovimientoInsumo();
         m.setInsumo(insumo);
+        m.setLoteInsumo(lote);
         m.setTipoMovimiento(tipo);
         m.setCantidad(cantidad);
         m.setUsuario(usuario);

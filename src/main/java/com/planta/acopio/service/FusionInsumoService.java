@@ -121,6 +121,21 @@ public class FusionInsumoService {
         detalle.put("recetas", ids("SELECT id FROM receta_insumo WHERE insumo_id = ?", origenId));
         detalle.put("lotesProduccion", ids("SELECT id FROM lote_produccion_insumo WHERE insumo_id = ?", origenId));
         detalle.put("informes", ids("SELECT id FROM informe_produccion_insumo WHERE insumo_id = ?", origenId));
+        detalle.put("lotes", ids("SELECT id FROM lote_insumo WHERE insumo_id = ?", origenId));
+
+        // Los lotes del origen pasan al destino. El codigo es unico por insumo: si choca (p. ej. los dos tienen su lote INICIAL),
+        // el lote que llega conserva su identidad con un sufijo (INICIAL-2) y su historial no se toca.
+        java.util.Set<String> usados = new java.util.HashSet<>(jdbc.queryForList("SELECT codigo FROM lote_insumo WHERE insumo_id = ?", String.class, destinoId));
+        for (java.util.Map<String, Object> lote : jdbc.queryForList("SELECT id, codigo FROM lote_insumo WHERE insumo_id = ? ORDER BY creado_en, id", origenId)) {
+            String codigo = (String) lote.get("codigo");
+            String nuevo = codigo;
+            for (int n = 2; usados.contains(nuevo); n++) {
+                String sufijo = "-" + n;
+                nuevo = codigo.substring(0, Math.min(codigo.length(), 40 - sufijo.length())) + sufijo;
+            }
+            usados.add(nuevo);
+            jdbc.update("UPDATE lote_insumo SET insumo_id = ?, codigo = ? WHERE id = ?", destinoId, nuevo, lote.get("id"));
+        }
 
         jdbc.update("UPDATE movimiento_insumo SET insumo_id = ? WHERE insumo_id = ?", destinoId, origenId);
         jdbc.update("UPDATE salida_inventario SET insumo_id = ? WHERE insumo_id = ?", destinoId, origenId);
@@ -133,6 +148,11 @@ public class FusionInsumoService {
         // Invariante: el stock del destino es la suma de su libro (que ahora incluye el historial del origen).
         BigDecimal libro = jdbc.queryForObject("SELECT COALESCE(SUM(cantidad), 0) FROM movimiento_insumo WHERE insumo_id = ?",
                 BigDecimal.class, destinoId);
+        BigDecimal enLotes = jdbc.queryForObject("SELECT COALESCE(SUM(cantidad_disponible), 0) FROM lote_insumo WHERE insumo_id = ?", BigDecimal.class, destinoId);
+        if (enLotes.compareTo(vp.stockResultante()) != 0) {
+            throw new IllegalStateException("La fusión dejaría el stock (" + vp.stockResultante() + ") distinto de la suma de sus lotes ("
+                    + enLotes + "). No se guardó nada.");
+        }
         if (libro.compareTo(vp.stockResultante()) != 0) {
             throw new IllegalStateException("La fusión dejaría el stock (" + vp.stockResultante() + ") distinto de la suma de movimientos ("
                     + libro + "). No se guardó nada.");
@@ -141,12 +161,12 @@ public class FusionInsumoService {
         UUID id = UUID.randomUUID();
         jdbc.update("INSERT INTO fusion_insumo (id, insumo_origen_id, insumo_destino_id, nombre_origen, nombre_destino, unidad_medida, "
                         + "stock_origen, stock_destino_antes, stock_destino_despues, movimientos, retiros, recetas, lotes_produccion, informes, "
-                        + "detalle_json, usuario_id, creado_en) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                        + "detalle_json, usuario_id, creado_en, lotes) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 id, origenId, destinoId, origen.nombre(), destino.nombre(), destino.unidad(),
                 origen.stock(), destino.stock(), vp.stockResultante(),
                 detalle.get("movimientos").size(), detalle.get("retiros").size(), detalle.get("recetas").size(),
                 detalle.get("lotesProduccion").size(), detalle.get("informes").size(),
-                aJson(detalle), usuarioAutenticado().getId(), LocalDateTime.now(ZoneOffset.UTC));
+                aJson(detalle), usuarioAutenticado().getId(), LocalDateTime.now(ZoneOffset.UTC), detalle.get("lotes").size());
 
         // Si ya no quedan duplicados, la base empieza a garantizar la unicidad del nombre.
         jdbc.queryForObject("SELECT asegurar_indice_unico_insumo()", Boolean.class);

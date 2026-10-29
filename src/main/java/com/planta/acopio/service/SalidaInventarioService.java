@@ -75,7 +75,7 @@ public class SalidaInventarioService {
                     || !Objects.equals(s.getLoteId(), dto.loteId()) || !Objects.equals(s.getOrigenLote(), dto.origenLote())) {
                 throw new ConflictoNegocioException("El identificador ya fue utilizado para otra salida.");
             }
-            UUID movimientoId = esInsumo ? movimientosInsumo.findBySalidaId(s.getId()).orElseThrow().getId()
+            UUID movimientoId = esInsumo ? movimientosInsumo.findBySalidaIdOrderByOrdenAsc(s.getId()).get(0).getId()
                     : movimientos.findBySalidaId(s.getId()).orElseThrow().getId();
             return respuesta(s, movimientoId);
         }

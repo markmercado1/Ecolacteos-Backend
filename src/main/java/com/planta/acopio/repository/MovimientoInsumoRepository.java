@@ -18,7 +18,8 @@ import java.util.UUID;
 // libro del insumo (orden de escritura, columna `orden` de V40) y recien despues se filtra por fechas y se pagina: el saldo de cada
 // fila es siempre el real, aunque la pagina o el rango no empiecen en el primer movimiento.
 public interface MovimientoInsumoRepository extends JpaRepository<MovimientoInsumo, UUID> {
-    java.util.Optional<MovimientoInsumo> findBySalidaId(UUID salidaId);
+    // Una salida puede repartirse entre varios lotes: un movimiento por lote (el primero es el que se informa).
+    List<MovimientoInsumo> findBySalidaIdOrderByOrdenAsc(UUID salidaId);
 
 
     @Query("SELECT COALESCE(SUM(m.cantidad), 0) FROM MovimientoInsumo m WHERE m.insumo.id = :insumoId")

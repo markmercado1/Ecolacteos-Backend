@@ -57,6 +57,13 @@ public class MovimientoInsumo {
     private Long orden;
     public Long getOrden() { return orden; }
 
+    // V43: lote de insumo al que afecta el movimiento. Todo movimiento referencia un lote.
+    @ManyToOne(optional = false)
+    @JoinColumn(name = "lote_insumo_id")
+    private LoteInsumo loteInsumo;
+    public LoteInsumo getLoteInsumo() { return loteInsumo; }
+    public void setLoteInsumo(LoteInsumo loteInsumo) { this.loteInsumo = loteInsumo; }
+
     public MovimientoInsumo() {}
 
     public UUID getId() { return id; }

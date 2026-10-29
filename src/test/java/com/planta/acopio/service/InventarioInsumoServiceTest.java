@@ -4,6 +4,9 @@ import com.planta.acopio.dto.AjusteInsumoRequest;
 import com.planta.acopio.dto.IngresoInsumoRequest;
 import com.planta.acopio.dto.MovimientoInsumoResponse;
 import com.planta.acopio.entity.Insumo;
+import com.planta.acopio.entity.LoteInsumo;
+import com.planta.acopio.entity.MotivoSalida;
+import com.planta.acopio.entity.SalidaInventario;
 import com.planta.acopio.entity.LoteProduccion;
 import com.planta.acopio.entity.MovimientoInsumo;
 import com.planta.acopio.entity.TipoMovimientoInsumo;
@@ -28,6 +31,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -46,6 +50,7 @@ class InventarioInsumoServiceTest {
     @Mock private InsumoRepository insumoRepository;
     @Mock private MovimientoInsumoRepository movimientoRepository;
     @Mock private UsuarioRepository usuarioRepository;
+    @Mock private LoteInsumoService loteService;
 
     private InventarioInsumoService service;
     private Insumo sal;
@@ -53,7 +58,13 @@ class InventarioInsumoServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new InventarioInsumoService(insumoRepository, movimientoRepository, usuarioRepository);
+        service = new InventarioInsumoService(insumoRepository, movimientoRepository, usuarioRepository, loteService);
+        // Por defecto cada insumo tiene UN lote que cubre cualquier cantidad (los repartos entre varios lotes se prueban aparte).
+        when(loteService.crearLote(any(), any(), any(), any(), any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-NUEVO"));
+        when(loteService.loteParaEntradaGeneral(any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-1"));
+        when(loteService.loteInicial(any())).thenAnswer(inv -> lote(inv.getArgument(0), "INICIAL"));
+        when(loteService.asignar(any(), any(), any())).thenAnswer(inv ->
+                List.of(new LoteInsumoService.Asignacion(lote(inv.getArgument(0), "L-1"), inv.getArgument(1))));
         SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken("ana@planta.com", null));
         usuario = new Usuario();
         usuario.setId(UUID.randomUUID());
@@ -73,6 +84,16 @@ class InventarioInsumoServiceTest {
         when(insumoRepository.findById(i.getId())).thenReturn(Optional.of(i));
         when(insumoRepository.bloquearStock(i.getId())).thenReturn(Optional.of(new BigDecimal(stock)));
         return i;
+    }
+
+    private LoteInsumo lote(Insumo insumo, String codigo) {
+        LoteInsumo l = new LoteInsumo();
+        l.setId(UUID.randomUUID());
+        l.setInsumo(insumo);
+        l.setCodigo(codigo);
+        l.setCantidadInicial(BigDecimal.ZERO);
+        l.setCantidadDisponible(BigDecimal.ZERO);
+        return l;
     }
 
     private MovimientoInsumo movimientoGuardado() {
@@ -99,6 +120,8 @@ class InventarioInsumoServiceTest {
         assertThat(m.getReferencia()).isEqualTo("Guía 001-55");
         assertThat(m.getMotivo()).isEqualTo("Compra semanal");
         assertThat(m.getLoteProduccion()).isNull();
+        assertThat(m.getLoteInsumo().getCodigo()).isEqualTo("L-NUEVO");   // V43: cada ingreso crea su lote
+        verify(loteService).crearLote(sal, new BigDecimal("14"), null, null, null);
         assertThat(r.saldoAnterior()).isEqualByComparingTo("6");
         assertThat(r.saldoResultante()).isEqualByComparingTo("20");
         assertThat(r.usuarioNombre()).isEqualTo("Ana");
@@ -198,6 +221,80 @@ class InventarioInsumoServiceTest {
     void sinInsumosNoHaceNada() {
         service.registrarSalidasProduccion(new LoteProduccion(), Map.of());
         verifyNoInteractions(movimientoRepository);
+    }
+
+    // ---- Lotes (V43) ----
+
+    @Test
+    void laProduccionSeReparteEntreLotesYDejaUnMovimientoPorCadaUno() {
+        LoteInsumo viejo = lote(sal, "L-VIEJO");
+        LoteInsumo nuevo = lote(sal, "L-NUEVO");
+        when(insumoRepository.descontarStock(any(), any())).thenReturn(1);
+        when(loteService.asignar(sal, new BigDecimal("8"), LoteInsumoService.Prioridad.CONSUMO)).thenReturn(List.of(
+                new LoteInsumoService.Asignacion(viejo, new BigDecimal("5")), new LoteInsumoService.Asignacion(nuevo, new BigDecimal("3"))));
+        LoteProduccion lote = new LoteProduccion();
+        lote.setId(UUID.randomUUID());
+
+        service.registrarSalidasProduccion(lote, Map.of(sal, new BigDecimal("8")));
+
+        ArgumentCaptor<MovimientoInsumo> c = ArgumentCaptor.forClass(MovimientoInsumo.class);
+        verify(movimientoRepository, times(2)).save(c.capture());
+        assertThat(c.getAllValues()).extracting(m -> m.getLoteInsumo().getCodigo()).containsExactly("L-VIEJO", "L-NUEVO");
+        assertThat(c.getAllValues()).extracting(MovimientoInsumo::getCantidad).usingComparatorForType(BigDecimal::compareTo, BigDecimal.class)
+                .containsExactly(new BigDecimal("-5"), new BigDecimal("-3"));
+        assertThat(c.getAllValues()).allSatisfy(m -> assertThat(m.getLoteProduccion()).isSameAs(lote));
+    }
+
+    @Test
+    void siNoHayLotesConsumiblesLaProduccionFallaYNoDejaMovimientos() {
+        when(insumoRepository.descontarStock(any(), any())).thenReturn(1);
+        when(loteService.asignar(any(), any(), eq(LoteInsumoService.Prioridad.CONSUMO)))
+                .thenThrow(new ValidacionNegocioException("Stock insuficiente de Sal: hay 4 en lotes vencidos, que no se consumen"));
+
+        assertThatThrownBy(() -> service.registrarSalidasProduccion(new LoteProduccion(), Map.of(sal, new BigDecimal("4"))))
+                .isInstanceOf(ValidacionNegocioException.class).hasMessageContaining("vencidos");
+        verify(movimientoRepository, never()).save(any());
+    }
+
+    @Test
+    void elConteoEnContraSaleDeLosLotesEnFefoYElConteoAFavorSeSumaAlLoteMasReciente() {
+        LoteInsumo a = lote(sal, "L-A");
+        LoteInsumo b = lote(sal, "L-B");
+        when(loteService.asignar(sal, new BigDecimal("4"), LoteInsumoService.Prioridad.RETIRO_GENERAL)).thenReturn(List.of(
+                new LoteInsumoService.Asignacion(a, new BigDecimal("1")), new LoteInsumoService.Asignacion(b, new BigDecimal("3"))));
+
+        service.ajustar(sal.getId(), new AjusteInsumoRequest(new BigDecimal("2"), "Conteo"));   // 6 -> 2: faltan 4
+
+        ArgumentCaptor<MovimientoInsumo> c = ArgumentCaptor.forClass(MovimientoInsumo.class);
+        verify(movimientoRepository, times(2)).save(c.capture());
+        assertThat(c.getAllValues()).extracting(m -> m.getLoteInsumo().getCodigo()).containsExactly("L-A", "L-B");
+        assertThat(c.getAllValues()).allSatisfy(m -> assertThat(m.getTipoMovimiento()).isEqualTo(TipoMovimientoInsumo.AJUSTE));
+
+        org.mockito.Mockito.clearInvocations(movimientoRepository, loteService);
+        service.ajustar(sal.getId(), new AjusteInsumoRequest(new BigDecimal("10"), "Conteo"));   // +4 a favor
+        verify(loteService).sumar(any(), eq(new BigDecimal("4")));
+        assertThat(movimientoGuardado().getLoteInsumo().getCodigo()).isEqualTo("L-1");
+    }
+
+    @Test
+    void unRetiroPorVencimientoPidePrimeroLosLotesVencidosYUnoGeneralLosVigentes() {
+        SalidaInventario porVencer = new SalidaInventario();
+        porVencer.setInsumo(sal);
+        porVencer.setCantidad(new BigDecimal("2"));
+        porVencer.setTipo(MotivoSalida.VENCIMIENTO);
+        porVencer.setMotivo("Vencido");
+        porVencer.setUsuario(usuario);
+        service.registrarRetiro(porVencer);
+        verify(loteService).asignar(sal, new BigDecimal("2"), LoteInsumoService.Prioridad.RETIRO_VENCIDOS_PRIMERO);
+
+        SalidaInventario otra = new SalidaInventario();
+        otra.setInsumo(sal);
+        otra.setCantidad(new BigDecimal("1"));
+        otra.setTipo(MotivoSalida.DETERIORO);
+        otra.setMotivo("Rotura");
+        otra.setUsuario(usuario);
+        service.registrarRetiro(otra);
+        verify(loteService).asignar(sal, new BigDecimal("1"), LoteInsumoService.Prioridad.RETIRO_GENERAL);
     }
 
     // ---- Saldo inicial ----

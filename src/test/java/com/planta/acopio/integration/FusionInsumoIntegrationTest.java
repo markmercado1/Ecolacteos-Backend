@@ -158,6 +158,10 @@ class FusionInsumoIntegrationTest {
         assertThat(stock(destino)).isEqualByComparingTo("251");
         assertThat(libro(destino)).isEqualByComparingTo("251");   // invariante stock = SUM(movimientos)
         assertThat(libro(origen)).isEqualByComparingTo("0");
+        // Los lotes del origen pasan al destino; el codigo repetido (los dos tenian su INICIAL) conserva la identidad con sufijo.
+        assertThat(jdbc.queryForList("SELECT codigo FROM lote_insumo WHERE insumo_id = ? ORDER BY codigo", String.class, destino)).contains("INICIAL", "INICIAL-2");
+        assertThat(jdbc.queryForObject("SELECT COALESCE(SUM(cantidad_disponible), 0) FROM lote_insumo WHERE insumo_id = ?", BigDecimal.class, destino)).isEqualByComparingTo("251");
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM lote_insumo WHERE insumo_id = ?", Integer.class, origen)).isZero();
         assertThat(jdbc.queryForMap("SELECT activo, stock, fusionado_en_id FROM insumo WHERE id = ?", origen))
                 .containsEntry("activo", false).containsEntry("fusionado_en_id", destino);
 

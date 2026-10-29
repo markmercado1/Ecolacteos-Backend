@@ -134,6 +134,8 @@ class RecetaProduccionIntegrationTest {
 
         cuajo = insumoRepository.save(insumo("Cuajo " + sufijo, "g", "15"));
         sal = insumoRepository.save(insumo("Sal " + sufijo, "kg", "20"));
+        sembrarLote(cuajo);
+        sembrarLote(sal);
         autenticar();
     }
 
@@ -145,6 +147,12 @@ class RecetaProduccionIntegrationTest {
     private void autenticar() {
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken(responsable.getEmail(), null));
+    }
+
+    /** Stock sembrado a mano (sin pasar por el servicio): se le da su lote INICIAL, como hace la migracion V43. */
+    private void sembrarLote(Insumo i) {
+        jdbc.update("INSERT INTO lote_insumo (insumo_id, codigo, fecha_ingreso, cantidad_inicial, cantidad_disponible, origen) "
+                + "VALUES (?, 'INICIAL', CURRENT_DATE, ?, ?, 'INICIAL')", i.getId(), i.getStock(), i.getStock());
     }
 
     private Insumo insumo(String nombre, String unidadMedida, String stock) {
@@ -238,6 +246,7 @@ class RecetaProduccionIntegrationTest {
     void iniciarSinStockSuficienteNoConsumeNadaYElLoteSiguePlanificado() {
         recibirLeche("1500");
         jdbc.update("UPDATE insumo SET stock = 6 WHERE id = ?", sal.getId());
+        jdbc.update("UPDATE lote_insumo SET cantidad_disponible = 6 WHERE insumo_id = ?", sal.getId());
         RecetaResponse receta = recetaAndino();
         LoteProduccionResponse plan = planificar(receta, "1000");
         BigDecimal lecheAntes = inventarioLecheService.obtenerSaldoDisponibleLitros();

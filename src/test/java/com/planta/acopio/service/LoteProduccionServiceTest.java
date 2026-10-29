@@ -96,7 +96,7 @@ class LoteProduccionServiceTest {
         service = new LoteProduccionService(repository, productoRepository, presentacionRepository, usuarioRepository,
                 inventarioService, inventarioLecheService, recepcionPlantaRepository, consumoRepository, detalleRepository,
                 insumoRepository, loteInsumoRepository, recetaRepository,
-                new InventarioInsumoService(insumoRepository, movimientoInsumoRepository, usuarioRepository));
+                new InventarioInsumoService(insumoRepository, movimientoInsumoRepository, usuarioRepository, loteServiceDePrueba()));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("produccion@planta.com", null));
     }
@@ -841,5 +841,19 @@ class LoteProduccionServiceTest {
         service.buscar(null, null, null, "  Paín ", pageable);
 
         verify(repository).buscarConFiltros(null, null, null, "%pain%", pageable);
+    }
+
+    /** V43: el consumo de insumos sale de lotes; estas pruebas verifican produccion, no el reparto, asi que cada insumo tiene un lote que lo cubre. */
+    private static LoteInsumoService loteServiceDePrueba() {
+        LoteInsumoService s = org.mockito.Mockito.mock(LoteInsumoService.class);
+        org.mockito.Mockito.lenient().when(s.asignar(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> {
+                    com.planta.acopio.entity.LoteInsumo l = new com.planta.acopio.entity.LoteInsumo();
+                    l.setId(java.util.UUID.randomUUID());
+                    l.setInsumo(inv.getArgument(0));
+                    l.setCodigo("L-1");
+                    return java.util.List.of(new LoteInsumoService.Asignacion(l, inv.getArgument(1)));
+                });
+        return s;
     }
 }

@@ -7,7 +7,9 @@ import com.planta.acopio.entity.MovimientoInsumo;
 import com.planta.acopio.entity.Rol;
 import com.planta.acopio.entity.TipoMovimientoInsumo;
 import com.planta.acopio.entity.Usuario;
+import com.planta.acopio.entity.LoteInsumo;
 import com.planta.acopio.repository.InsumoRepository;
+import com.planta.acopio.repository.LoteInsumoRepository;
 import com.planta.acopio.repository.MovimientoInsumoRepository;
 import com.planta.acopio.repository.RolRepository;
 import com.planta.acopio.repository.UsuarioRepository;
@@ -64,11 +66,13 @@ class KardexOrdenYZonaHorariaIntegrationTest {
     @Autowired private KardexService kardexService;
     @Autowired private InsumoRepository insumoRepository;
     @Autowired private MovimientoInsumoRepository movimientoRepository;
+    @Autowired private LoteInsumoRepository loteRepository;
     @Autowired private RolRepository rolRepository;
     @Autowired private UsuarioRepository usuarioRepository;
     @Autowired private JdbcTemplate jdbc;
 
     private Insumo insumo;
+    private LoteInsumo lote;
     private Usuario usuario;
 
     @BeforeEach
@@ -87,11 +91,20 @@ class KardexOrdenYZonaHorariaIntegrationTest {
         i.setNombre("Azucar orden " + s);
         i.setUnidadMedida("kg");
         insumo = insumoRepository.save(i);
+        LoteInsumo l = new LoteInsumo();
+        l.setInsumo(insumo);
+        l.setCodigo("INICIAL");
+        l.setFechaIngreso(LocalDate.of(2026, 10, 1));
+        l.setCantidadInicial(BigDecimal.ZERO);
+        l.setCantidadDisponible(BigDecimal.ZERO);
+        l.setOrigen(LoteInsumo.Origen.INICIAL);
+        lote = loteRepository.save(l);
     }
 
     private MovimientoInsumo ajuste(String cantidad, LocalDateTime creadoEn) {
         MovimientoInsumo m = new MovimientoInsumo();
         m.setInsumo(insumo);
+        m.setLoteInsumo(lote);
         m.setTipoMovimiento(TipoMovimientoInsumo.AJUSTE);
         m.setCantidad(new BigDecimal(cantidad));
         m.setUsuario(usuario);
