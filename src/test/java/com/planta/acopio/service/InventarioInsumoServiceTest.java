@@ -60,7 +60,7 @@ class InventarioInsumoServiceTest {
     void setUp() {
         service = new InventarioInsumoService(insumoRepository, movimientoRepository, usuarioRepository, loteService);
         // Por defecto cada insumo tiene UN lote que cubre cualquier cantidad (los repartos entre varios lotes se prueban aparte).
-        when(loteService.crearLote(any(), any(), any(), any(), any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-NUEVO"));
+        when(loteService.crearLote(any(), any(), any(), any(), any(), any(), any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-NUEVO"));
         when(loteService.loteParaEntradaGeneral(any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-1"));
         when(loteService.loteInicial(any())).thenAnswer(inv -> lote(inv.getArgument(0), "INICIAL"));
         when(loteService.asignar(any(), any(), any())).thenAnswer(inv ->
@@ -121,7 +121,7 @@ class InventarioInsumoServiceTest {
         assertThat(m.getMotivo()).isEqualTo("Compra semanal");
         assertThat(m.getLoteProduccion()).isNull();
         assertThat(m.getLoteInsumo().getCodigo()).isEqualTo("L-NUEVO");   // V43: cada ingreso crea su lote
-        verify(loteService).crearLote(sal, new BigDecimal("14"), null, null, null);
+        verify(loteService).crearLote(sal, new BigDecimal("14"), null, null, null, null, null);
         assertThat(r.saldoAnterior()).isEqualByComparingTo("6");
         assertThat(r.saldoResultante()).isEqualByComparingTo("20");
         assertThat(r.usuarioNombre()).isEqualTo("Ana");

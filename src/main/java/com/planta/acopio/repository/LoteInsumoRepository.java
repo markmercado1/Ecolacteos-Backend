@@ -14,6 +14,8 @@ public interface LoteInsumoRepository extends JpaRepository<LoteInsumo, UUID> {
 
     boolean existsByInsumoIdAndCodigo(UUID insumoId, String codigo);
 
+    List<LoteInsumo> findByDocumentoIngresoIdOrderByCreadoEnAscIdAsc(UUID documentoIngresoId);
+
     Optional<LoteInsumo> findByInsumoIdAndCodigo(UUID insumoId, String codigo);
 
     /**

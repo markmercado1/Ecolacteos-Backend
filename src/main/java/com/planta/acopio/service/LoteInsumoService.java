@@ -1,7 +1,9 @@
 package com.planta.acopio.service;
 
 import com.planta.acopio.entity.Insumo;
+import com.planta.acopio.entity.DocumentoIngreso;
 import com.planta.acopio.entity.LoteInsumo;
+import com.planta.acopio.entity.ProveedorCompra;
 import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.LoteInsumoRepository;
@@ -50,10 +52,20 @@ public class LoteInsumoService {
 
     /** Lote nuevo de un ingreso. `codigo` en blanco = se autogenera (insumo + fecha + secuencia); si se indica debe ser unico en el insumo. */
     public LoteInsumo crearLote(Insumo insumo, BigDecimal cantidad, String codigo, String codigoProveedor, LocalDate vencimiento) {
+        return crearLote(insumo, cantidad, codigo, codigoProveedor, vencimiento, null, null);
+    }
+
+    /** Igual, con el proveedor y el documento de ingreso de origen (V44). Un ingreso nuevo no puede traer un vencimiento ya pasado. */
+    public LoteInsumo crearLote(Insumo insumo, BigDecimal cantidad, String codigo, String codigoProveedor, LocalDate vencimiento,
+                                ProveedorCompra proveedor, DocumentoIngreso documento) {
         if (cantidad == null || cantidad.signum() <= 0) {
             throw new ValidacionNegocioException("La cantidad de un lote debe ser mayor a 0.");
         }
         LocalDate hoy = reglaVencimiento.hoy();
+        if (vencimiento != null && vencimiento.isBefore(hoy)) {
+            throw new ValidacionNegocioException("El vencimiento del lote de " + insumo.getNombre() + " (" + vencimiento
+                    + ") ya pasó: un ingreso no puede traer un lote vencido.");
+        }
         String codigoFinal = codigo == null || codigo.isBlank() ? generarCodigo(insumo, hoy) : limpiarCodigo(codigo);
         if (repository.existsByInsumoIdAndCodigo(insumo.getId(), codigoFinal)) {
             throw new ConflictoNegocioException("Ya existe un lote «" + codigoFinal + "» de " + insumo.getNombre() + ". Usa otro código.");
@@ -64,6 +76,8 @@ public class LoteInsumoService {
         lote.setCodigoProveedor(codigoProveedor == null || codigoProveedor.isBlank() ? null : codigoProveedor.trim());
         lote.setFechaIngreso(hoy);
         lote.setFechaVencimiento(vencimiento);
+        lote.setProveedor(proveedor);
+        lote.setDocumentoIngreso(documento);
         lote.setCantidadInicial(cantidad);
         lote.setCantidadDisponible(cantidad);
         lote.setOrigen(LoteInsumo.Origen.INGRESO);

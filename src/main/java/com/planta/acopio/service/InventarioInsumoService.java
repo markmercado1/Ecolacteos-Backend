@@ -5,10 +5,12 @@ import com.planta.acopio.dto.AjusteInsumoRequest;
 import com.planta.acopio.dto.IngresoInsumoRequest;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.dto.MovimientoInsumoResponse;
+import com.planta.acopio.entity.DocumentoIngreso;
 import com.planta.acopio.entity.Insumo;
 import com.planta.acopio.entity.LoteInsumo;
 import com.planta.acopio.entity.LoteProduccion;
 import com.planta.acopio.entity.MotivoSalida;
+import com.planta.acopio.entity.ProveedorCompra;
 import com.planta.acopio.entity.MovimientoInsumo;
 import com.planta.acopio.entity.TipoMovimientoInsumo;
 import com.planta.acopio.entity.Usuario;
@@ -68,22 +70,38 @@ public class InventarioInsumoService {
 
     @Transactional
     public MovimientoInsumoResponse registrarIngreso(UUID insumoId, IngresoInsumoRequest dto) {
+        IngresoRegistrado r = registrarIngresoLote(insumoId, dto.cantidad(), null, null, null, null, null,
+                normalizar(dto.referencia()), normalizar(dto.observacion()));
+        return toResponse(r.movimiento(), r.saldoAnterior(), r.saldoResultante());
+    }
+
+    /** Un ingreso ya escrito: el movimiento (con su lote) y el saldo del insumo antes y despues. */
+    public record IngresoRegistrado(MovimientoInsumo movimiento, BigDecimal saldoAnterior, BigDecimal saldoResultante) {}
+
+    /**
+     * Ingreso con su lote completo (V44): codigo (vacio = autogenerado), lote del proveedor, vencimiento, proveedor y documento
+     * de origen. Debe ejecutarse dentro de la transaccion del llamador (IngresoInsumoService o registrarIngreso()), que se
+     * confirma o revierte junto con el stock y el movimiento.
+     */
+    public IngresoRegistrado registrarIngresoLote(UUID insumoId, BigDecimal cantidad, String codigoLote, String loteProveedor,
+                                                  java.time.LocalDate vencimiento, ProveedorCompra proveedor, DocumentoIngreso documento,
+                                                  String referencia, String observacion) {
         Insumo insumo = buscar(insumoId);
         if (!Boolean.TRUE.equals(insumo.getActivo())) {
             throw new RecursoInactivoException("El insumo '" + insumo.getNombre() + "' está desactivado; reactívalo antes de registrar un ingreso.");
         }
         BigDecimal anterior = bloquearStock(insumoId);
-        BigDecimal nuevo = anterior.add(dto.cantidad());
+        BigDecimal nuevo = anterior.add(cantidad);
         if (nuevo.compareTo(MAX_STOCK) > 0) {
             throw new ValidacionNegocioException("El ingreso supera el stock máximo registrable para el insumo.");
         }
         insumoRepository.fijarStock(insumoId, nuevo);
-        // V43: cada ingreso crea su lote (codigo autogenerado, sin vencimiento mientras el ingreso no lo informe).
-        LoteInsumo lote = loteService.crearLote(insumo, dto.cantidad(), null, null, null);
-        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.INGRESO, dto.cantidad(), usuarioAutenticado(), lote);
-        m.setReferencia(normalizar(dto.referencia()));
-        m.setMotivo(normalizar(dto.observacion()));
-        return toResponse(movimientoRepository.save(m), anterior, nuevo);
+        // V43/V44: cada ingreso crea su lote (codigo autogenerado o el indicado, vencimiento opcional, proveedor y documento).
+        LoteInsumo lote = loteService.crearLote(insumo, cantidad, codigoLote, loteProveedor, vencimiento, proveedor, documento);
+        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.INGRESO, cantidad, usuarioAutenticado(), lote);
+        m.setReferencia(referencia);
+        m.setMotivo(observacion);
+        return new IngresoRegistrado(movimientoRepository.save(m), anterior, nuevo);
     }
 
     /**

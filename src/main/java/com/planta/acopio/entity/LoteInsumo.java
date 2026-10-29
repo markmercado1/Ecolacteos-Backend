@@ -36,6 +36,15 @@ public class LoteInsumo {
     @Column(name = "fecha_vencimiento")
     private LocalDate fechaVencimiento;
 
+    // V44: de que proveedor y documento de ingreso vino el lote (nulos en el INICIAL y en los ingresos anteriores a V44).
+    @ManyToOne
+    @JoinColumn(name = "proveedor_id")
+    private ProveedorCompra proveedor;
+
+    @ManyToOne
+    @JoinColumn(name = "documento_ingreso_id")
+    private DocumentoIngreso documentoIngreso;
+
     @Column(name = "cantidad_inicial", nullable = false, precision = 12, scale = 2)
     private BigDecimal cantidadInicial;
 
@@ -65,6 +74,10 @@ public class LoteInsumo {
     public void setFechaIngreso(LocalDate fechaIngreso) { this.fechaIngreso = fechaIngreso; }
     public LocalDate getFechaVencimiento() { return fechaVencimiento; }
     public void setFechaVencimiento(LocalDate fechaVencimiento) { this.fechaVencimiento = fechaVencimiento; }
+    public ProveedorCompra getProveedor() { return proveedor; }
+    public void setProveedor(ProveedorCompra proveedor) { this.proveedor = proveedor; }
+    public DocumentoIngreso getDocumentoIngreso() { return documentoIngreso; }
+    public void setDocumentoIngreso(DocumentoIngreso documentoIngreso) { this.documentoIngreso = documentoIngreso; }
     public BigDecimal getCantidadInicial() { return cantidadInicial; }
     public void setCantidadInicial(BigDecimal cantidadInicial) { this.cantidadInicial = cantidadInicial; }
     public BigDecimal getCantidadDisponible() { return cantidadDisponible; }
