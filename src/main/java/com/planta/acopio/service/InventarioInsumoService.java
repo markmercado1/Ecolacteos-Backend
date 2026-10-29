@@ -171,6 +171,11 @@ public class InventarioInsumoService {
         }
     }
 
+    /** Stock que se puede consumir en produccion: el de los lotes no vencidos (puede ser menor que insumo.stock). */
+    public BigDecimal stockConsumible(Insumo insumo) {
+        return loteService.stockConsumible(insumo);
+    }
+
     /** Stock con el que nace un insumo nuevo (alta en Catalogos): primer movimiento de su kardex. */
     public void registrarSaldoInicial(Insumo insumo, BigDecimal cantidad) {
         if (cantidad == null || cantidad.signum() <= 0) return;

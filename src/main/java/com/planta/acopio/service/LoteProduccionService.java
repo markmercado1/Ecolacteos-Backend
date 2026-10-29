@@ -158,7 +158,7 @@ public class LoteProduccionService {
         // el movimiento SALIDA_PRODUCCION en el kardex del insumo).
         List<Linea> lineasInsumos = insumosValidados.entrySet().stream()
                 .map(e -> CalculoReceta.linea(e.getKey().getId(), e.getKey().getNombre(),
-                        e.getKey().getUnidadMedida(), e.getValue(), e.getKey().getStock()))
+                        e.getKey().getUnidadMedida(), e.getValue(), inventarioInsumoService.stockConsumible(e.getKey())))
                 .toList();
         if (lineasInsumos.stream().anyMatch(l -> !l.suficiente())) {
             throw new ValidacionNegocioException(CalculoReceta.mensajeFaltantes(
@@ -414,7 +414,7 @@ public class LoteProduccionService {
         Linea leche = CalculoReceta.lineaLeche(lote.getLitrosUsados(), inventarioLecheService.obtenerSaldoDisponibleLitros());
         List<Linea> insumos = filas.stream()
                 .map(f -> CalculoReceta.linea(f.getInsumo().getId(), f.getInsumo().getNombre(),
-                        f.getInsumo().getUnidadMedida(), f.getCantidad(), f.getInsumo().getStock()))
+                        f.getInsumo().getUnidadMedida(), f.getCantidad(), inventarioInsumoService.stockConsumible(f.getInsumo())))
                 .toList();
         Presentacion salida = lote.getReceta() != null ? lote.getReceta().getPresentacion() : null;
         return CalculoReceta.respuesta(lote.getLitrosUsados(), null, leche, insumos, lote.getCantidadEsperada(),
@@ -715,9 +715,15 @@ public class LoteProduccionService {
                             p.getUnidadConteo(), d.getCantidadObtenida());
                 })
                 .toList();
+        // V43: de que lotes de insumo salio cada insumo (trazabilidad hacia atras desde el lote de produccion).
+        Map<UUID, List<InsumoUsadoResponse.LoteUsado>> lotesUsados = new HashMap<>();
+        for (Object[] f : loteInsumoRepository.lotesDeInsumoUsados(l.getId())) {
+            lotesUsados.computeIfAbsent((UUID) f[0], k -> new ArrayList<>()).add(new InsumoUsadoResponse.LoteUsado(
+                    (UUID) f[1], (String) f[2], (String) f[3], (String) f[4], (java.time.LocalDate) f[5], (BigDecimal) f[6]));
+        }
         List<InsumoUsadoResponse> insumos = loteInsumoRepository.findByLoteId(l.getId()).stream()
                 .map(i -> new InsumoUsadoResponse(i.getInsumo().getId(), i.getInsumo().getNombre(),
-                        i.getInsumo().getUnidadMedida(), i.getCantidad()))
+                        i.getInsumo().getUnidadMedida(), i.getCantidad(), lotesUsados.getOrDefault(i.getInsumo().getId(), List.of())))
                 .toList();
 
         Receta receta = l.getReceta();

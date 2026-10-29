@@ -854,6 +854,8 @@ class LoteProduccionServiceTest {
                     l.setCodigo("L-1");
                     return java.util.List.of(new LoteInsumoService.Asignacion(l, inv.getArgument(1)));
                 });
+        org.mockito.Mockito.lenient().when(s.stockConsumible(org.mockito.ArgumentMatchers.any()))
+                .thenAnswer(inv -> ((com.planta.acopio.entity.Insumo) inv.getArgument(0)).getStock());
         return s;
     }
 }
