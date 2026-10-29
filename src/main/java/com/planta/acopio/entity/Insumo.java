@@ -29,6 +29,11 @@ public class Insumo {
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal stock = BigDecimal.ZERO;
 
+    // V41: si el insumo fue fusionado en otro (herramienta de duplicados), apunta al que lo absorbio. Un insumo
+    // fusionado queda inactivo, con stock 0, y no admite ningun movimiento ni edicion.
+    @Column(name = "fusionado_en_id")
+    private UUID fusionadoEnId;
+
     public Insumo() {}
 
     public UUID getId() { return id; }
@@ -39,6 +44,9 @@ public class Insumo {
     public void setUnidadMedida(String unidadMedida) { this.unidadMedida = unidadMedida; }
     public Boolean getActivo() { return activo; }
     public void setActivo(Boolean activo) { this.activo = activo; }
+    public UUID getFusionadoEnId() { return fusionadoEnId; }
+    public void setFusionadoEnId(UUID fusionadoEnId) { this.fusionadoEnId = fusionadoEnId; }
+    public boolean estaFusionado() { return fusionadoEnId != null; }
     public BigDecimal getStock() { return stock; }
     public void setStock(BigDecimal stock) { this.stock = stock; }
 }

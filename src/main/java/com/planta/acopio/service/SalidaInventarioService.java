@@ -52,6 +52,9 @@ public class SalidaInventarioService {
         if (esInsumo) {
             insumos.bloquearStock(itemId).orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado"));
             nueva.setInsumo(insumos.findById(itemId).orElseThrow());
+            if (nueva.getInsumo().estaFusionado()) {
+                throw new ConflictoNegocioException("El insumo fue fusionado en otro insumo: registra la salida en el insumo que lo absorbió.");
+            }
             if (dto.loteId() != null || dto.origenLote() != null) {
                 throw new ValidacionNegocioException("Los insumos no tienen lotes de ingreso registrados.");
             }

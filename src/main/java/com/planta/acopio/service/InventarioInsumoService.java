@@ -10,6 +10,7 @@ import com.planta.acopio.entity.LoteProduccion;
 import com.planta.acopio.entity.MovimientoInsumo;
 import com.planta.acopio.entity.TipoMovimientoInsumo;
 import com.planta.acopio.entity.Usuario;
+import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.RecursoInactivoException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
@@ -146,8 +147,12 @@ public class InventarioInsumoService {
     }
 
     private Insumo buscar(UUID id) {
-        return insumoRepository.findById(id)
+        Insumo insumo = insumoRepository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + id));
+        if (insumo.estaFusionado()) {
+            throw new ConflictoNegocioException("El insumo «" + insumo.getNombre() + "» fue fusionado en otro insumo: registra el movimiento en el insumo que lo absorbió.");
+        }
+        return insumo;
     }
 
     private BigDecimal bloquearStock(UUID id) {

@@ -59,6 +59,7 @@ public class InsumoService {
     public InsumoResponse actualizar(UUID id, InsumoRequest dto) {
         Insumo i = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + id));
+        rechazarSiFusionado(i);
         if (dto.stock() != null && dto.stock().compareTo(i.getStock()) != 0) {
             throw new ValidacionNegocioException("El stock de un insumo no se edita desde el catálogo: registra un "
                     + "ingreso o un ajuste por conteo físico en Inventario para que quede en el kardex.");
@@ -85,8 +86,15 @@ public class InsumoService {
     public InsumoResponse reactivar(UUID id) {
         Insumo i = repository.findById(id)
                 .orElseThrow(() -> new RecursoNoEncontradoException("Insumo no encontrado: " + id));
+        rechazarSiFusionado(i);
         i.setActivo(true);
         return toResponse(i);
+    }
+
+    private static void rechazarSiFusionado(Insumo i) {
+        if (i.estaFusionado()) {
+            throw new ConflictoNegocioException("El insumo «" + i.getNombre() + "» fue fusionado en otro insumo y ya no se puede editar ni reactivar.");
+        }
     }
 
     /** Nombre sin espacios sobrantes al inicio, al final ni repetidos en medio. */
@@ -102,7 +110,8 @@ public class InsumoService {
     private void validarNombreUnico(String nombre, UUID idPropio) {
         String clave = BusquedaTexto.clave(nombre);
         for (Insumo otro : repository.findAll()) {
-            if (otro.getId().equals(idPropio) || !BusquedaTexto.clave(otro.getNombre()).equals(clave)) {
+            // Un insumo fusionado conserva su nombre historico pero ya no cuenta: su nombre vuelve a estar disponible.
+            if (otro.estaFusionado() || otro.getId().equals(idPropio) || !BusquedaTexto.clave(otro.getNombre()).equals(clave)) {
                 continue;
             }
             throw new ConflictoNegocioException("Ya existe un insumo llamado «" + otro.getNombre() + "»"
