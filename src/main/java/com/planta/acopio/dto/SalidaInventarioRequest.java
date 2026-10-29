@@ -10,5 +10,5 @@ public record SalidaInventarioRequest(
         @NotNull @DecimalMin("0.01") @Digits(integer = 10, fraction = 2) BigDecimal cantidad,
         @NotNull MotivoSalida tipo,
         @NotBlank @Size(max = 500) String motivo,
-        @Pattern(regexp = "LOTE|REGULARIZACION") String origenLote,
+        @Pattern(regexp = "LOTE|REGULARIZACION|INSUMO") String origenLote,
         UUID loteId) {}

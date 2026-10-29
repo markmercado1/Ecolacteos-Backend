@@ -1,6 +1,11 @@
 package com.planta.acopio.controller;
 
 import com.planta.acopio.dto.AjusteInsumoRequest;
+import com.planta.acopio.dto.AnulacionIngresoRequest;
+import com.planta.acopio.dto.ConteoInsumoRequest;
+import com.planta.acopio.dto.ConteoInsumoResponse;
+import com.planta.acopio.dto.LoteInsumoResponse;
+import com.planta.acopio.service.LoteInsumoConsultaService;
 import com.planta.acopio.dto.IngresoInsumoRequest;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.dto.MovimientoInsumoResponse;
@@ -31,9 +36,11 @@ import java.util.UUID;
 public class InventarioInsumoController {
 
     private final InventarioInsumoService inventarioInsumoService;
+    private final LoteInsumoConsultaService loteConsultaService;
 
-    public InventarioInsumoController(InventarioInsumoService inventarioInsumoService) {
+    public InventarioInsumoController(InventarioInsumoService inventarioInsumoService, LoteInsumoConsultaService loteConsultaService) {
         this.inventarioInsumoService = inventarioInsumoService;
+        this.loteConsultaService = loteConsultaService;
     }
 
     @Operation(summary = "Stock actual de insumos", description = "Activos, más los desactivados que todavía tienen stock.")
@@ -67,5 +74,30 @@ public class InventarioInsumoController {
     public ResponseEntity<MovimientoInsumoResponse> ajustar(@PathVariable UUID insumoId,
                                                             @RequestBody @Valid AjusteInsumoRequest dto) {
         return ResponseEntity.status(HttpStatus.CREATED).body(inventarioInsumoService.ajustar(insumoId, dto));
+    }
+
+    @Operation(summary = "Lotes de un insumo", description = "Con su origen (proveedor, documento) y estado calculado (VIGENTE, POR_VENCER, VENCIDO, AGOTADO). `soloConExistencia` oculta los agotados.")
+    @GetMapping("/{insumoId}/lotes")
+    public ResponseEntity<List<LoteInsumoResponse>> lotes(@PathVariable UUID insumoId, @RequestParam(defaultValue = "false") boolean soloConExistencia) {
+        return ResponseEntity.ok(loteConsultaService.listar(insumoId, soloConExistencia));
+    }
+
+    @Operation(summary = "Conteo físico por lote", description = "Solo ADMIN. La cantidad contada de cada lote; la diferencia de cada uno queda como un movimiento AJUSTE en ese lote, con el motivo obligatorio.")
+    @ApiResponses({
+            @ApiResponse(responseCode = "201", description = "Conteo registrado", content = @Content(schema = @Schema(implementation = ConteoInsumoResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Sin diferencias, lote ajeno o datos inválidos"),
+            @ApiResponse(responseCode = "404", description = "No existe el insumo o el lote")
+    })
+    @PostMapping("/{insumoId}/conteos")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<ConteoInsumoResponse> contar(@PathVariable UUID insumoId, @RequestBody @Valid ConteoInsumoRequest dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioInsumoService.registrarConteoPorLote(insumoId, dto));
+    }
+
+    @Operation(summary = "Anular un ingreso (su lote)", description = "Solo ADMIN. Reversa el lote completo con un movimiento ANULACION_INGRESO; solo si el lote no se ha usado.")
+    @PostMapping("/lotes/{loteId}/anulacion")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<MovimientoInsumoResponse> anular(@PathVariable UUID loteId, @RequestBody @Valid AnulacionIngresoRequest dto) {
+        return ResponseEntity.status(HttpStatus.CREATED).body(inventarioInsumoService.anularIngreso(loteId, dto.motivo()));
     }
 }

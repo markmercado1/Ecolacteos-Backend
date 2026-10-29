@@ -16,6 +16,12 @@ public interface LoteInsumoRepository extends JpaRepository<LoteInsumo, UUID> {
 
     List<LoteInsumo> findByDocumentoIngresoIdOrderByCreadoEnAscIdAsc(UUID documentoIngresoId);
 
+    List<LoteInsumo> findByInsumoIdOrderByCreadoEnDescIdDesc(UUID insumoId);
+
+    /** Id del insumo de un lote, sin cargar el lote (para bloquear primero el insumo y leer despues su existencia). */
+    @Query("SELECT l.insumo.id FROM LoteInsumo l WHERE l.id = :loteId")
+    Optional<UUID> insumoIdDe(@Param("loteId") UUID loteId);
+
     Optional<LoteInsumo> findByInsumoIdAndCodigo(UUID insumoId, String codigo);
 
     /**

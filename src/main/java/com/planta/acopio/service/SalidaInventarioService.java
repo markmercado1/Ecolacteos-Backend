@@ -55,10 +55,16 @@ public class SalidaInventarioService {
             if (nueva.getInsumo().estaFusionado()) {
                 throw new ConflictoNegocioException("El insumo fue fusionado en otro insumo: registra la salida en el insumo que lo absorbió.");
             }
-            if (dto.loteId() != null || dto.origenLote() != null) {
-                throw new ValidacionNegocioException("Los insumos no tienen lotes de ingreso registrados.");
+            if (dto.origenLote() != null && !"INSUMO".equals(dto.origenLote())) {
+                throw new ValidacionNegocioException("Para un insumo, el lote se indica con origen INSUMO.");
             }
         } else {
+            if (!dto.tipo().esDeProducto()) {
+                throw new ValidacionNegocioException("El motivo " + dto.tipo() + " es solo para insumos.");
+            }
+            if ("INSUMO".equals(dto.origenLote())) {
+                throw new ValidacionNegocioException("El origen INSUMO es solo para lotes de insumos.");
+            }
             nueva.setPresentacion(presentaciones.buscarConBloqueoParaActualizarStock(itemId)
                     .orElseThrow(() -> new RecursoNoEncontradoException("Presentación no encontrada")));
         }

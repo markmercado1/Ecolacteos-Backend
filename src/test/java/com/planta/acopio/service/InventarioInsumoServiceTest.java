@@ -51,6 +51,7 @@ class InventarioInsumoServiceTest {
     @Mock private MovimientoInsumoRepository movimientoRepository;
     @Mock private UsuarioRepository usuarioRepository;
     @Mock private LoteInsumoService loteService;
+    @Mock private com.planta.acopio.repository.LoteInsumoRepository loteRepository;
 
     private InventarioInsumoService service;
     private Insumo sal;
@@ -58,7 +59,7 @@ class InventarioInsumoServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new InventarioInsumoService(insumoRepository, movimientoRepository, usuarioRepository, loteService);
+        service = new InventarioInsumoService(insumoRepository, movimientoRepository, usuarioRepository, loteService, loteRepository);
         // Por defecto cada insumo tiene UN lote que cubre cualquier cantidad (los repartos entre varios lotes se prueban aparte).
         when(loteService.crearLote(any(), any(), any(), any(), any(), any(), any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-NUEVO"));
         when(loteService.loteParaEntradaGeneral(any())).thenAnswer(inv -> lote(inv.getArgument(0), "L-1"));

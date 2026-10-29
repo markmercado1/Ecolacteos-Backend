@@ -153,6 +153,19 @@ public class LoteInsumoService {
         return asignaciones;
     }
 
+    /** Toma `cantidad` de UN lote concreto del insumo (el usuario lo eligio). Falla si el lote no es del insumo o no alcanza. */
+    public Asignacion asignarDeLote(Insumo insumo, LoteInsumo lote, BigDecimal cantidad) {
+        if (!lote.getInsumo().getId().equals(insumo.getId())) {
+            throw new ValidacionNegocioException("El lote «" + lote.getCodigo() + "» no es de " + insumo.getNombre() + ".");
+        }
+        if (lote.getCantidadDisponible().compareTo(cantidad) < 0) {
+            throw new ValidacionNegocioException("El lote «" + lote.getCodigo() + "» solo tiene " + plano(lote.getCantidadDisponible()) + " "
+                    + insumo.getUnidadMedida() + " disponible; elige otro lote o deja la salida en automático (FEFO) para repartirla.");
+        }
+        lote.setCantidadDisponible(lote.getCantidadDisponible().subtract(cantidad));
+        return new Asignacion(lote, cantidad);
+    }
+
     /** Stock que se puede consumir en produccion: lotes con existencia que no estan vencidos. */
     public BigDecimal stockConsumible(Insumo insumo) {
         LocalDate hoy = reglaVencimiento.hoy();

@@ -96,7 +96,7 @@ class LoteProduccionServiceTest {
         service = new LoteProduccionService(repository, productoRepository, presentacionRepository, usuarioRepository,
                 inventarioService, inventarioLecheService, recepcionPlantaRepository, consumoRepository, detalleRepository,
                 insumoRepository, loteInsumoRepository, recetaRepository,
-                new InventarioInsumoService(insumoRepository, movimientoInsumoRepository, usuarioRepository, loteServiceDePrueba()));
+                new InventarioInsumoService(insumoRepository, movimientoInsumoRepository, usuarioRepository, loteServiceDePrueba(), org.mockito.Mockito.mock(com.planta.acopio.repository.LoteInsumoRepository.class)));
         SecurityContextHolder.getContext().setAuthentication(
                 new UsernamePasswordAuthenticationToken("produccion@planta.com", null));
     }

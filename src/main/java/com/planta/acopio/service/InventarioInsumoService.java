@@ -2,6 +2,8 @@ package com.planta.acopio.service;
 
 import com.planta.acopio.entity.SalidaInventario;
 import com.planta.acopio.dto.AjusteInsumoRequest;
+import com.planta.acopio.dto.ConteoInsumoRequest;
+import com.planta.acopio.dto.ConteoInsumoResponse;
 import com.planta.acopio.dto.IngresoInsumoRequest;
 import com.planta.acopio.dto.InsumoResponse;
 import com.planta.acopio.dto.MovimientoInsumoResponse;
@@ -19,6 +21,7 @@ import com.planta.acopio.exception.RecursoInactivoException;
 import com.planta.acopio.exception.RecursoNoEncontradoException;
 import com.planta.acopio.exception.ValidacionNegocioException;
 import com.planta.acopio.repository.InsumoRepository;
+import com.planta.acopio.repository.LoteInsumoRepository;
 import com.planta.acopio.repository.MovimientoInsumoRepository;
 import com.planta.acopio.repository.UsuarioRepository;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -51,13 +54,15 @@ public class InventarioInsumoService {
     private final MovimientoInsumoRepository movimientoRepository;
     private final UsuarioRepository usuarioRepository;
     private final LoteInsumoService loteService;
+    private final LoteInsumoRepository loteRepository;
 
     public InventarioInsumoService(InsumoRepository insumoRepository, MovimientoInsumoRepository movimientoRepository,
-                                   UsuarioRepository usuarioRepository, LoteInsumoService loteService) {
+                                   UsuarioRepository usuarioRepository, LoteInsumoService loteService, LoteInsumoRepository loteRepository) {
         this.insumoRepository = insumoRepository;
         this.movimientoRepository = movimientoRepository;
         this.usuarioRepository = usuarioRepository;
         this.loteService = loteService;
+        this.loteRepository = loteRepository;
     }
 
     /** Inventario de insumos: activos e inactivos que aun conservan stock. */
@@ -189,7 +194,16 @@ public class InventarioInsumoService {
         LoteInsumoService.Prioridad prioridad = salida.getTipo() == MotivoSalida.VENCIMIENTO
                 ? LoteInsumoService.Prioridad.RETIRO_VENCIDOS_PRIMERO : LoteInsumoService.Prioridad.RETIRO_GENERAL;
         UUID primero = null;
-        for (LoteInsumoService.Asignacion a : loteService.asignar(salida.getInsumo(), salida.getCantidad(), prioridad)) {
+        List<LoteInsumoService.Asignacion> asignaciones;
+        if ("INSUMO".equals(salida.getOrigenLote()) && salida.getLoteId() != null) {
+            // El usuario eligio el lote: sale solo de ese (y debe alcanzar).
+            LoteInsumo elegido = loteRepository.findById(salida.getLoteId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + salida.getLoteId()));
+            asignaciones = List.of(loteService.asignarDeLote(salida.getInsumo(), elegido, salida.getCantidad()));
+        } else {
+            asignaciones = loteService.asignar(salida.getInsumo(), salida.getCantidad(), prioridad);
+        }
+        for (LoteInsumoService.Asignacion a : asignaciones) {
             MovimientoInsumo m = nuevoMovimiento(salida.getInsumo(),
                     TipoMovimientoInsumo.valueOf("SALIDA_" + salida.getTipo().name()), a.cantidad().negate(), salida.getUsuario(), a.lote());
             m.setMotivo(salida.getMotivo());
@@ -198,6 +212,78 @@ public class InventarioInsumoService {
             if (primero == null) primero = guardado;
         }
         return primero;
+    }
+
+    /**
+     * Conteo fisico por lote (solo ADMIN, quien lo llama): cada lote listado se lleva a la cantidad contada con un movimiento AJUSTE
+     * (positivo o negativo) en ESE lote y el mismo motivo. Los lotes sin diferencia se omiten; si ninguno difiere, se rechaza.
+     * Permitido en un insumo desactivado (para dejarlo en cero).
+     */
+    @Transactional
+    public ConteoInsumoResponse registrarConteoPorLote(UUID insumoId, ConteoInsumoRequest dto) {
+        Insumo insumo = buscar(insumoId);
+        BigDecimal anterior = bloquearStock(insumoId);
+        Usuario usuario = usuarioAutenticado();
+        String motivo = dto.motivo().trim();
+        java.util.Set<UUID> vistos = new java.util.HashSet<>();
+        List<ConteoInsumoResponse.Diferencia> diferencias = new java.util.ArrayList<>();
+        BigDecimal total = BigDecimal.ZERO;
+        for (ConteoInsumoRequest.Linea linea : dto.lotes()) {
+            if (!vistos.add(linea.loteId())) {
+                throw new ValidacionNegocioException("Un lote aparece más de una vez en el conteo.");
+            }
+            LoteInsumo lote = loteRepository.findById(linea.loteId())
+                    .orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + linea.loteId()));
+            if (!lote.getInsumo().getId().equals(insumoId)) {
+                throw new ValidacionNegocioException("El lote «" + lote.getCodigo() + "» no es de " + insumo.getNombre() + ".");
+            }
+            BigDecimal variacion = linea.cantidadContada().subtract(lote.getCantidadDisponible());
+            if (variacion.signum() == 0) continue;
+            lote.setCantidadDisponible(linea.cantidadContada());
+            MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.AJUSTE, variacion, usuario, lote);
+            m.setMotivo(motivo);
+            UUID movimientoId = movimientoRepository.save(m).getId();
+            diferencias.add(new ConteoInsumoResponse.Diferencia(lote.getId(), lote.getCodigo(),
+                    linea.cantidadContada().subtract(variacion), linea.cantidadContada(), variacion, movimientoId));
+            total = total.add(variacion);
+        }
+        if (diferencias.isEmpty()) {
+            throw new ValidacionNegocioException("Lo contado coincide con el sistema en todos los lotes; no hay ninguna diferencia que registrar.");
+        }
+        BigDecimal nuevo = anterior.add(total);
+        if (nuevo.compareTo(MAX_STOCK) > 0) {
+            throw new ValidacionNegocioException("El conteo supera el stock máximo registrable para el insumo.");
+        }
+        insumoRepository.fijarStock(insumoId, nuevo);
+        return new ConteoInsumoResponse(insumoId, insumo.getNombre(), insumo.getUnidadMedida(), anterior, nuevo, diferencias);
+    }
+
+    /**
+     * Anula un ingreso registrado por error: reversa todo el lote con un movimiento ANULACION_INGRESO (el ingreso original queda
+     * en el kardex). Solo si el lote vino de un ingreso y NO se ha usado en nada (disponible = cantidad inicial); si ya se uso, la
+     * correccion es un conteo fisico del lote.
+     */
+    @Transactional
+    public MovimientoInsumoResponse anularIngreso(UUID loteId, String motivo) {
+        // Primero se bloquea el insumo (se obtiene su id sin cargar el lote) y recien despues se lee el lote: asi ve su existencia
+        // confirmada y ningun consumo concurrente puede cambiarla mientras se anula.
+        UUID insumoId = loteRepository.insumoIdDe(loteId).orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + loteId));
+        Insumo insumo = buscar(insumoId);
+        BigDecimal anterior = bloquearStock(insumoId);
+        LoteInsumo lote = loteRepository.findById(loteId).orElseThrow(() -> new RecursoNoEncontradoException("Lote no encontrado: " + loteId));
+        if (lote.getOrigen() != LoteInsumo.Origen.INGRESO) {
+            throw new ValidacionNegocioException("Solo se puede anular un lote que vino de un ingreso; el lote INICIAL se corrige con un conteo físico.");
+        }
+        if (lote.getCantidadDisponible().compareTo(lote.getCantidadInicial()) != 0) {
+            throw new ConflictoNegocioException("El lote «" + lote.getCodigo() + "» ya se usó (quedan " + lote.getCantidadDisponible().stripTrailingZeros().toPlainString()
+                    + " de " + lote.getCantidadInicial().stripTrailingZeros().toPlainString() + "): no se puede anular; corrige el stock con un conteo físico.");
+        }
+        BigDecimal cantidad = lote.getCantidadDisponible();
+        lote.setCantidadDisponible(BigDecimal.ZERO);
+        insumoRepository.fijarStock(insumo.getId(), anterior.subtract(cantidad));
+        MovimientoInsumo m = nuevoMovimiento(insumo, TipoMovimientoInsumo.ANULACION_INGRESO, cantidad.negate(), usuarioAutenticado(), lote);
+        m.setMotivo(motivo.trim());
+        return toResponse(movimientoRepository.save(m), anterior, anterior.subtract(cantidad));
     }
 
     private Insumo buscar(UUID id) {
