@@ -75,4 +75,19 @@ public final class BusquedaTexto {
         String patron = patronLike(termino);
         return patron != null ? patron : "%";
     }
+
+    // Buscador con autocompletado (Nueva venta): el termino plegado y escapado, con el comodin donde corresponda.
+    //   prefijo  -> el texto EMPIEZA con el termino ("lec" encuentra "Leche", no "Alcalá")
+    //   palabra  -> alguna palabra del texto empieza con el termino ("lec" encuentra "Yogurt de leche")
+    private static String escapado(String termino) {
+        return plegar(termino.trim()).replace("!", "!!").replace("%", "!%").replace("_", "!_");
+    }
+
+    public static String patronPrefijo(String termino) {
+        return termino == null || termino.isBlank() ? null : escapado(termino) + "%";
+    }
+
+    public static String patronPalabra(String termino) {
+        return termino == null || termino.isBlank() ? null : "% " + escapado(termino) + "%";
+    }
 }

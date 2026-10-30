@@ -28,6 +28,8 @@ import com.planta.acopio.service.RegistroAcopioService;
 import com.planta.acopio.service.ReservaService;
 import com.planta.acopio.service.UnidadService;
 import com.planta.acopio.service.UsuarioService;
+import com.planta.acopio.service.BuscadorPresentacionesVentaService;
+import com.planta.acopio.service.ComprobanteVentaPdfService;
 import com.planta.acopio.service.VentaService;
 import com.planta.acopio.service.ZonaService;
 import org.apache.poi.ss.usermodel.Sheet;
@@ -73,6 +75,8 @@ class ExportacionPermisosWebMvcTest {
     @MockBean private RegistroAcopioService registroAcopioService;
     @MockBean private PagoService pagoService;
     @MockBean private VentaService ventaService;
+    @MockBean private BuscadorPresentacionesVentaService buscadorPresentacionesVentaService;
+    @MockBean private ComprobanteVentaPdfService comprobanteVentaPdfService;
     @MockBean private ReservaService reservaService;
     @MockBean private ConciliacionService conciliacionService;
     @MockBean private UnidadService unidadService;
@@ -136,7 +140,7 @@ class ExportacionPermisosWebMvcTest {
         when(proveedorService.buscar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
         when(registroAcopioService.buscarPaginado(any(), any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(4), 0));
         when(pagoService.listar(any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(1), 0));
-        when(ventaService.buscar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
+        when(ventaService.buscar(any(), any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(4), 0));
         when(conciliacionService.listar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));
         when(loteProduccionService.buscar(any(), any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(4), 0));
         when(usuarioService.buscar(any(), any(), any(), any())).thenAnswer(i -> new PageImpl<>(List.of(), i.getArgument(3), 0));

@@ -22,13 +22,20 @@ public record CrearVentaCarritoRequest(
     // RETIRADA ocurren en la misma transaccion (si la venta falla, la reserva sigue confirmada). Exige canal PUBLICO.
     UUID reservaId,
     // Fase H (opcional): quien compra (CLIENTE o PROVEEDOR). Sin comprador = cliente varios (solo en canal PUBLICO).
-    @Valid ClienteDtos.CompradorRef comprador
+    @Valid ClienteDtos.CompradorRef comprador,
+    // V48 (opcional): NOTA_VENTA (por defecto) o BOLETA. Cada tipo lleva su propia serie y su propio correlativo.
+    String tipoComprobante
 ) {
     public CrearVentaCarritoRequest(String uuidCliente, LocalDate fecha, String tipoCliente, List<DetalleVentaRequest> detalles) {
-        this(uuidCliente, fecha, tipoCliente, detalles, null, null);
+        this(uuidCliente, fecha, tipoCliente, detalles, null, null, null);
     }
 
     public CrearVentaCarritoRequest(String uuidCliente, LocalDate fecha, String tipoCliente, List<DetalleVentaRequest> detalles, UUID reservaId) {
-        this(uuidCliente, fecha, tipoCliente, detalles, reservaId, null);
+        this(uuidCliente, fecha, tipoCliente, detalles, reservaId, null, null);
+    }
+
+    public CrearVentaCarritoRequest(String uuidCliente, LocalDate fecha, String tipoCliente, List<DetalleVentaRequest> detalles, UUID reservaId,
+                                    ClienteDtos.CompradorRef comprador) {
+        this(uuidCliente, fecha, tipoCliente, detalles, reservaId, comprador, null);
     }
 }

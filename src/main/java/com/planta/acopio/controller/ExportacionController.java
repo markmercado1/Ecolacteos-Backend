@@ -144,11 +144,13 @@ public class ExportacionController {
     @GetMapping("/ventas")
     @PreAuthorize("hasAnyRole('VENTAS','ADMIN')")
     public ResponseEntity<Resource> ventas(
-            @Parameter(description = "Fecha exacta") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @Parameter(description = "Fecha exacta (si se indica, manda sobre desde/hasta)") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate fecha,
+            @Parameter(description = "Desde esta fecha, inclusive") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate desde,
+            @Parameter(description = "Hasta esta fecha, inclusive") @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate hasta,
             @Parameter(description = "MAYORISTA, PROVEEDOR o PUBLICO") @RequestParam(required = false) String tipoCliente,
-            @Parameter(description = "Vendedor, producto o presentación") @RequestParam(required = false) String busqueda) {
+            @Parameter(description = "Vendedor, comprador, comprobante, producto o presentación") @RequestParam(required = false) String busqueda) {
         return RespuestaExcel.de(excel.exportar("ventas", "Ventas", ColumnasExportacion.VENTAS, pagina -> {
-            var ventas = ventaService.buscar(fecha, tipoCliente, busqueda, pagina);
+            var ventas = ventaService.buscar(fecha != null ? fecha : desde, fecha != null ? fecha : hasta, tipoCliente, busqueda, pagina);
             return new PageImpl<>(ColumnasExportacion.lineasDe(ventas.getContent()), pagina, ventas.getTotalElements());
         }));
     }

@@ -40,11 +40,13 @@ public interface VentaRepository extends JpaRepository<Venta, UUID> {
     // aleatorio) solo desempata lo que queda igual.
     String FILTROS_VENTA =
             "FROM venta v LEFT JOIN usuario u ON u.id = v.vendedor_id WHERE " +
-            "(CAST(:fecha AS date) IS NULL OR v.fecha = CAST(:fecha AS date)) AND " +
+            "(CAST(:desde AS date) IS NULL OR v.fecha >= CAST(:desde AS date)) AND " +
+            "(CAST(:hasta AS date) IS NULL OR v.fecha <= CAST(:hasta AS date)) AND " +
             "(CAST(:tipoCliente AS varchar) IS NULL OR v.tipo_cliente = CAST(:tipoCliente AS varchar)) AND " +
             "(" + BusquedaTexto.SIN_TERMINO + " OR " +
             BusquedaTexto.PLEGAR_ABRE + "u.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
             BusquedaTexto.PLEGAR_ABRE + "coalesce(v.comprador_nombre, '')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
+            BusquedaTexto.PLEGAR_ABRE + "v.serie || '-' || LPAD(CAST(v.numero AS varchar), 8, '0')" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
             "EXISTS (SELECT 1 FROM venta_detalle vd JOIN presentacion pr ON pr.id = vd.presentacion_id " +
             "JOIN producto pd ON pd.id = pr.producto_id WHERE vd.venta_id = v.id AND (" +
             BusquedaTexto.PLEGAR_ABRE + "pd.nombre" + BusquedaTexto.PLEGAR_CIERRA + BusquedaTexto.COINCIDE + " OR " +
@@ -53,8 +55,13 @@ public interface VentaRepository extends JpaRepository<Venta, UUID> {
     @Query(value = "SELECT v.* " + FILTROS_VENTA + "ORDER BY v.fecha DESC, v.creado_en DESC, v.id DESC",
            countQuery = "SELECT count(*) " + FILTROS_VENTA,
            nativeQuery = true)
-    Page<Venta> buscarConFiltros(@Param("fecha") LocalDate fecha, @Param("tipoCliente") String tipoCliente,
+    Page<Venta> buscarConFiltros(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta, @Param("tipoCliente") String tipoCliente,
                                  @Param("busqueda") String busqueda, Pageable pageable);
+
+    // Totales de las ventas que cumplen el mismo filtro que buscarConFiltros: [cantidad, suma del total].
+    @Query(value = "SELECT count(*), COALESCE(SUM(v.total), 0) " + FILTROS_VENTA, nativeQuery = true)
+    List<Object[]> resumenConFiltros(@Param("desde") LocalDate desde, @Param("hasta") LocalDate hasta, @Param("tipoCliente") String tipoCliente,
+                                     @Param("busqueda") String busqueda);
 
     // Usado por PanelEconomicoService (RF-INN-05, KPI de margen por canal).
     // LIMITACION DOCUMENTADA (CORE_DESIGN.md): la tabla venta no tiene relacion
@@ -85,4 +92,11 @@ public interface VentaRepository extends JpaRepository<Venta, UUID> {
     int moverCliente(@Param("origen") UUID origen, @Param("destino") UUID destino);
 
     Optional<Venta> findByReservaId(UUID reservaId);
+
+    // V48: siguiente numero de cada serie (secuencias de la BD: dos ventas concurrentes nunca reciben el mismo numero).
+    @Query(value = "SELECT nextval('venta_nv01_seq')", nativeQuery = true)
+    long siguienteNumeroNotaVenta();
+
+    @Query(value = "SELECT nextval('venta_b001_seq')", nativeQuery = true)
+    long siguienteNumeroBoleta();
 }

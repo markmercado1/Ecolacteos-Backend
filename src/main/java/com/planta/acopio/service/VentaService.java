@@ -3,12 +3,14 @@ package com.planta.acopio.service;
 import com.planta.acopio.dto.CrearVentaCarritoRequest;
 import com.planta.acopio.dto.DetalleVentaRequest;
 import com.planta.acopio.dto.DetalleVentaResponse;
+import com.planta.acopio.dto.ResumenVentasResponse;
 import com.planta.acopio.dto.VentaRequest;
 import com.planta.acopio.dto.VentaResponse;
 import com.planta.acopio.dto.VentaResumenResponse;
 import com.planta.acopio.dto.ClienteDtos;
 import com.planta.acopio.entity.AfectacionIgv;
 import com.planta.acopio.entity.TipoComprador;
+import com.planta.acopio.entity.TipoComprobante;
 import com.planta.acopio.entity.TipoPrecio;
 import com.planta.acopio.entity.Presentacion;
 import com.planta.acopio.entity.Reserva;
@@ -101,7 +103,7 @@ public class VentaService {
     @Transactional
     public VentaResponse registrarOIgnorarSiDuplicado(VentaRequest dto) {
         List<DetalleVentaRequest> detalles = List.of(new DetalleVentaRequest(dto.presentacionId(), dto.cantidad()));
-        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), detalles, null, null, false);
+        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), detalles, null, null, null, false);
         return toResponse(venta);
     }
 
@@ -110,7 +112,8 @@ public class VentaService {
     // PROVEEDOR un proveedor del padron. En un retiro (reservaId) el comprador es el de la reserva.
     @Transactional
     public VentaResumenResponse registrarCarritoOIgnorarSiDuplicado(CrearVentaCarritoRequest dto) {
-        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), dto.detalles(), dto.reservaId(), dto.comprador(), true);
+        TipoComprobante comprobante = dto.tipoComprobante() == null || dto.tipoComprobante().isBlank() ? null : TipoComprobante.deTexto(dto.tipoComprobante());
+        Venta venta = crear(dto.uuidCliente(), dto.fecha(), dto.tipoCliente(), dto.detalles(), dto.reservaId(), dto.comprador(), comprobante, true);
         return toResumenResponse(venta);
     }
 
@@ -119,18 +122,19 @@ public class VentaService {
     // cualquier motivo, la reserva sigue CONFIRMADA y no queda nada escrito.
     @Transactional
     public VentaResumenResponse registrarRetiroDeReserva(UUID reservaId, String uuidCliente, LocalDate fecha) {
-        Venta venta = crear(uuidCliente, fecha, TipoPrecio.PUBLICO, reservaService.lineasParaRetiro(reservaId), reservaId, null, true);
+        Venta venta = crear(uuidCliente, fecha, TipoPrecio.PUBLICO, reservaService.lineasParaRetiro(reservaId), reservaId, null, null, true);
         return toResumenResponse(venta);
     }
 
     private Venta crear(String uuidCliente, LocalDate fecha, String tipoClienteStr, List<DetalleVentaRequest> detallesSolicitados,
-                        UUID reservaId, ClienteDtos.CompradorRef compradorRef, boolean desdePanel) {
+                        UUID reservaId, ClienteDtos.CompradorRef compradorRef, TipoComprobante tipoComprobante, boolean desdePanel) {
         var existente = repository.findByUuidCliente(uuidCliente);
         if (existente.isPresent()) {
             Venta venta = existente.get();
             if (coincideConSolicitud(venta, fecha, tipoClienteStr, detallesSolicitados)
                     && java.util.Objects.equals(venta.getReservaId(), reservaId)
-                    && (reservaId != null || mismoComprador(venta, compradorRef))) {
+                    && (reservaId != null || mismoComprador(venta, compradorRef))
+                    && (tipoComprobante == null || tipoComprobante == venta.getTipoComprobante())) {
                 return venta;
             }
             // Mismo uuidCliente, contenido distinto: conflicto explicito, la operacion existente NO se
@@ -207,6 +211,13 @@ public class VentaService {
             venta.setCompradorNombre(reserva.getNombreCliente());
         }
 
+        // V48: comprobante. Se numera justo antes de insertar (ya validado todo lo demas) para dejar el menor numero de huecos: cada
+        // serie tiene su secuencia en la BD, asi dos ventas concurrentes nunca reciben el mismo numero. Sin tipo = nota de venta.
+        TipoComprobante tipo = tipoComprobante != null ? tipoComprobante : TipoComprobante.NOTA_VENTA;
+        venta.setTipoComprobante(tipo);
+        venta.setSerie(tipo.serie());
+        venta.setNumero(tipo == TipoComprobante.BOLETA ? repository.siguienteNumeroBoleta() : repository.siguienteNumeroNotaVenta());
+
         try {
             // saveAndFlush(), NO save(): una violacion de UNIQUE(uuid_cliente) por carrera concurrente se
             // traduce a ConflictoNegocioException en vez de escapar sin capturar en el commit (mismo criterio
@@ -217,6 +228,7 @@ public class VentaService {
                     "Ya existe una venta con este uuidCliente (creada concurrentemente); reintentar con el "
                             + "mismo uuidCliente para obtenerla.");
         }
+        entityManager.refresh(venta); // creado_en (hora real del registro) lo rellena la BD
 
         // Una salida de inventario POR LINEA, en la misma transaccion -- no puede existir una venta sin la
         // salida correspondiente a cada una de sus lineas; si cualquiera falla, toda la transaccion
@@ -315,9 +327,30 @@ public class VentaService {
     // tipoCliente sea un valor legal del enum antes de pasarlo a la query
     // nativa (que lo recibe como String -- ver comentario en VentaRepository).
     public Page<VentaResumenResponse> buscar(LocalDate fecha, String tipoCliente, String busqueda, Pageable pageable) {
+        return buscar(fecha, fecha, tipoCliente, busqueda, pageable);
+    }
+
+    // V48 (historial): rango de fechas (ambos extremos inclusivos, cualquiera puede faltar). La busqueda tambien encuentra por el numero
+    // del comprobante y por el nombre del comprador.
+    public Page<VentaResumenResponse> buscar(LocalDate desde, LocalDate hasta, String tipoCliente, String busqueda, Pageable pageable) {
+        validarRango(desde, hasta);
         String tipoNormalizado = tipoCliente != null ? tipoPrecioService.obtener(tipoCliente).getCodigo() : null;
-        return repository.buscarConFiltros(fecha, tipoNormalizado, BusquedaTexto.patronLike(busqueda), pageable)
+        return repository.buscarConFiltros(desde, hasta, tipoNormalizado, BusquedaTexto.patronLike(busqueda), pageable)
                 .map(this::toResumenResponse);
+    }
+
+    /** Cuantas ventas cumplen el filtro y cuanto suman (todas, no solo una pagina). */
+    public ResumenVentasResponse resumen(LocalDate desde, LocalDate hasta, String tipoCliente, String busqueda) {
+        validarRango(desde, hasta);
+        String tipoNormalizado = tipoCliente != null ? tipoPrecioService.obtener(tipoCliente).getCodigo() : null;
+        Object[] fila = repository.resumenConFiltros(desde, hasta, tipoNormalizado, BusquedaTexto.patronLike(busqueda)).get(0);
+        return new ResumenVentasResponse(((Number) fila[0]).longValue(), ((BigDecimal) fila[1]).setScale(2, RoundingMode.HALF_UP));
+    }
+
+    private static void validarRango(LocalDate desde, LocalDate hasta) {
+        if (desde != null && hasta != null && desde.isAfter(hasta)) {
+            throw new ValidacionNegocioException("La fecha «desde» no puede ser posterior a «hasta».");
+        }
     }
 
     public VentaResumenResponse obtener(UUID id) {
@@ -347,14 +380,17 @@ public class VentaService {
                 .map(d -> new DetalleVentaResponse(
                         d.getPresentacion().getId(), d.getPresentacion().getNombre(), d.getPresentacion().getProducto().getNombre(),
                         d.getCantidad(), d.getPrecioUnitario(), d.getSubtotal(),
-                        d.getAfectacionIgv() != null ? d.getAfectacionIgv().name() : null, d.getTasaIgv(), d.getValorVenta(), d.getIgv()))
+                        d.getAfectacionIgv() != null ? d.getAfectacionIgv().name() : null, d.getTasaIgv(), d.getValorVenta(), d.getIgv(),
+                        d.getPresentacion().getCodigo()))
                 .toList();
         UUID compradorId = v.getCompradorTipo() == TipoComprador.CLIENTE ? v.getClienteId() : v.getProveedorId();
         ClienteDtos.CompradorResumen comprador = v.getCompradorTipo() == null && v.getCompradorNombre() == null ? null
                 : new ClienteDtos.CompradorResumen(v.getCompradorTipo() == null ? null : v.getCompradorTipo().name(), compradorId,
                         v.getCompradorNombre(), v.getCompradorRuc());
         return new VentaResumenResponse(v.getId(), v.getFecha(), v.getTipoCliente(), detalles, v.getTotal(), resumenIgv(lineas, v.getTotal()),
-                comprador, v.getReservaId(), v.getReservaId() == null ? null : reservaService.codigoDe(v.getReservaId()));
+                comprador, v.getReservaId(), v.getReservaId() == null ? null : reservaService.codigoDe(v.getReservaId()),
+                v.getTipoComprobante() == null ? null : v.getTipoComprobante().name(), v.comprobante(),
+                v.getVendedor() == null ? null : v.getVendedor().getNombre(), v.getCreadoEn());
     }
 
     // Fase G: suma de la foto tributaria de las lineas. Nada se recalcula: una linea sin foto queda "sin determinar".

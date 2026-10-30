@@ -2,6 +2,7 @@ package com.planta.acopio.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,7 +20,13 @@ public record VentaResumenResponse(
     // Fase H: comprador (null = cliente varios; tipo null + nombre = el nombre dado en la reserva, sin ficha) y reserva de origen.
     ClienteDtos.CompradorResumen comprador,
     UUID reservaId,
-    String reservaCodigo
+    String reservaCodigo,
+    // V48: comprobante. tipoComprobante = NOTA_VENTA | BOLETA; comprobante = serie y numero ("NV01-00000041").
+    String tipoComprobante,
+    String comprobante,
+    // Quien registro la venta y la hora real del registro (hora local de la planta, sin zona).
+    String vendedorNombre,
+    LocalDateTime creadoEn
 ) {
 
     public VentaResumenResponse(UUID id, LocalDate fecha, String tipoCliente, List<DetalleVentaResponse> detalles, BigDecimal total) {
@@ -29,6 +36,11 @@ public record VentaResumenResponse(
     public VentaResumenResponse(UUID id, LocalDate fecha, String tipoCliente, List<DetalleVentaResponse> detalles, BigDecimal total,
                                 ResumenIgvVenta igv) {
         this(id, fecha, tipoCliente, detalles, total, igv, null, null, null);
+    }
+
+    public VentaResumenResponse(UUID id, LocalDate fecha, String tipoCliente, List<DetalleVentaResponse> detalles, BigDecimal total,
+                                ResumenIgvVenta igv, ClienteDtos.CompradorResumen comprador, UUID reservaId, String reservaCodigo) {
+        this(id, fecha, tipoCliente, detalles, total, igv, comprador, reservaId, reservaCodigo, null, null, null, null);
     }
 
     /**

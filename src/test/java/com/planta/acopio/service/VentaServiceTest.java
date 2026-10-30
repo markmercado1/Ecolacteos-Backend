@@ -128,11 +128,11 @@ class VentaServiceTest {
 
     @Test
     void buscarSinFiltrosPropagaAmbosParametrosComoNull() {
-        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), isNull(), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
         service.buscar(null, null, null, pageable);
 
-        verify(repository).buscarConFiltros(null, null, null, pageable);
+        verify(repository).buscarConFiltros(null, null, null, null, pageable);
     }
 
     // El repositorio recibe tipoCliente como String (necesario para la query
@@ -141,11 +141,11 @@ class VentaServiceTest {
     @Test
     void buscarNormalizaElTipoClienteAntesDeConsultar() {
         LocalDate fecha = LocalDate.of(2026, 9, 10);
-        when(repository.buscarConFiltros(fecha, "MAYORISTA", null, pageable)).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(fecha, fecha, "MAYORISTA", null, pageable)).thenReturn(new PageImpl<>(List.of()));
 
         service.buscar(fecha, "MAYORISTA", null, pageable);
 
-        verify(repository).buscarConFiltros(fecha, "MAYORISTA", null, pageable);
+        verify(repository).buscarConFiltros(fecha, fecha, "MAYORISTA", null, pageable);
     }
 
     @Test
@@ -160,7 +160,7 @@ class VentaServiceTest {
     void buscarPropagaLaMetadataDePaginacion() {
         var pageableChico = PageRequest.of(1, 2);
         var paginaSimulada = new PageImpl<Venta>(List.of(), pageableChico, 5);
-        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq(pageableChico))).thenReturn(paginaSimulada);
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), isNull(), eq(pageableChico))).thenReturn(paginaSimulada);
 
         var resultado = service.buscar(null, null, null, pageableChico);
 
@@ -455,10 +455,10 @@ class VentaServiceTest {
 
     @Test
     void buscarPliegaElTextoSinAcentosNiMayusculas() {
-        when(repository.buscarConFiltros(isNull(), isNull(), eq("%freson%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
+        when(repository.buscarConFiltros(isNull(), isNull(), isNull(), eq("%freson%"), eq(pageable))).thenReturn(new PageImpl<>(List.of()));
 
         service.buscar(null, null, "  FRESÓN ", pageable);
 
-        verify(repository).buscarConFiltros(null, null, "%freson%", pageable);
+        verify(repository).buscarConFiltros(null, null, null, "%freson%", pageable);
     }
 }

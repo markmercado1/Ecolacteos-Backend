@@ -48,7 +48,13 @@ public class Presentacion {
     @Column(name = "saldo_sin_trazabilidad_inicial")
     private Integer saldoSinTrazabilidadInicial;
 
+    // Codigo corto y unico (PRD-001...) que asigna la BD al insertar (V48): solo lectura aqui.
+    @Column(insertable = false, updatable = false)
+    private String codigo;
+
     public Presentacion() {}
+
+    public String getCodigo() { return codigo; }
 
     public UUID getId() { return id; }
     public void setId(UUID id) { this.id = id; }

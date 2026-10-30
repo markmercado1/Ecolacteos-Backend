@@ -23,6 +23,8 @@ import com.planta.acopio.service.ReservaService;
 import com.planta.acopio.service.UnidadService;
 import com.planta.acopio.service.ProveedorService;
 import com.planta.acopio.service.RegistroAcopioService;
+import com.planta.acopio.service.BuscadorPresentacionesVentaService;
+import com.planta.acopio.service.ComprobanteVentaPdfService;
 import com.planta.acopio.service.VentaService;
 import org.apache.poi.ss.usermodel.Sheet;
 import org.apache.poi.xssf.usermodel.XSSFWorkbook;
@@ -73,6 +75,8 @@ class ExportacionWebMvcTest {
     @MockBean private RegistroAcopioService registroAcopioService;
     @MockBean private PagoService pagoService;
     @MockBean private VentaService ventaService;
+    @MockBean private BuscadorPresentacionesVentaService buscadorPresentacionesVentaService;
+    @MockBean private ComprobanteVentaPdfService comprobanteVentaPdfService;
     @MockBean private ReservaService reservaService;
     @MockBean private ConciliacionService conciliacionService;
     @MockBean private UnidadService unidadService;
@@ -146,7 +150,7 @@ class ExportacionWebMvcTest {
     void pagosYVentasTienenSusPropiosRoles() throws Exception {
         // ADMIN ve ambos; (los pagos no son de VENTAS ni las ventas de RECEPCION: ver las pruebas siguientes)
         when(pagoService.listar(any(), any())).thenAnswer(inv -> new PageImpl<PagoResponse>(List.of(), inv.getArgument(1), 0));
-        when(ventaService.buscar(any(), any(), any(), any())).thenAnswer(inv -> new PageImpl<VentaResumenResponse>(List.of(), inv.getArgument(3), 0));
+        when(ventaService.buscar(any(), any(), any(), any(), any())).thenAnswer(inv -> new PageImpl<VentaResumenResponse>(List.of(), inv.getArgument(4), 0));
         mvc.perform(get("/api/exportaciones/pagos")).andExpect(status().isOk());
         mvc.perform(get("/api/exportaciones/ventas")).andExpect(status().isOk());
     }
@@ -159,13 +163,13 @@ class ExportacionWebMvcTest {
         mvc.perform(get("/api/exportaciones/ventas")).andExpect(status().isForbidden());
         mvc.perform(get("/api/exportaciones/proveedores")).andExpect(status().isForbidden());
         mvc.perform(get("/api/exportaciones/acopios")).andExpect(status().isForbidden());
-        verify(ventaService, never()).buscar(any(), any(), any(), any());
+        verify(ventaService, never()).buscar(any(), any(), any(), any(), any());
     }
 
     @Test
     @WithMockUser(roles = "VENTAS")
     void ventasExportaVentasPeroNoPagosNiAcopios() throws Exception {
-        when(ventaService.buscar(any(), any(), any(), any())).thenAnswer(inv -> new PageImpl<VentaResumenResponse>(List.of(), inv.getArgument(3), 0));
+        when(ventaService.buscar(any(), any(), any(), any(), any())).thenAnswer(inv -> new PageImpl<VentaResumenResponse>(List.of(), inv.getArgument(4), 0));
         mvc.perform(get("/api/exportaciones/ventas")).andExpect(status().isOk());
         mvc.perform(get("/api/exportaciones/pagos")).andExpect(status().isForbidden());
         mvc.perform(get("/api/exportaciones/acopios")).andExpect(status().isForbidden());
@@ -197,8 +201,8 @@ class ExportacionWebMvcTest {
                 new DetalleVentaResponse(UUID.randomUUID(), "1 kg", "Queso fresco", 3, new BigDecimal("20.00"), new BigDecimal("60.00")),
                 new DetalleVentaResponse(UUID.randomUUID(), "500 g", "Queso andino", 2, new BigDecimal("12.50"), new BigDecimal("25.00"))),
                 new BigDecimal("85.00"));
-        when(ventaService.buscar(any(), any(), any(), any())).thenAnswer(inv ->
-                new PageImpl<>(List.of(venta), inv.getArgument(3), 1));
+        when(ventaService.buscar(any(), any(), any(), any(), any())).thenAnswer(inv ->
+                new PageImpl<>(List.of(venta), inv.getArgument(4), 1));
 
         MvcResult resultado = mvc.perform(get("/api/exportaciones/ventas").param("tipoCliente", "MAYORISTA"))
                 .andExpect(status().isOk()).andReturn();

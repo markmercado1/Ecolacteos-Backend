@@ -7,6 +7,8 @@ import com.planta.acopio.config.UsuarioDetailsService;
 import com.planta.acopio.service.ConciliacionService;
 import com.planta.acopio.service.LoteProduccionService;
 import com.planta.acopio.service.PrecioQuesoService;
+import com.planta.acopio.service.BuscadorPresentacionesVentaService;
+import com.planta.acopio.service.ComprobanteVentaPdfService;
 import com.planta.acopio.service.VentaService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -37,6 +39,8 @@ class BusquedaParametroWebMvcTest {
 
     @Autowired private MockMvc mvc;
     @MockBean private VentaService ventaService;
+    @MockBean private BuscadorPresentacionesVentaService buscadorPresentacionesVentaService;
+    @MockBean private ComprobanteVentaPdfService comprobanteVentaPdfService;
     @MockBean private PrecioQuesoService precioQuesoService;
     @MockBean private LoteProduccionService loteProduccionService;
     @MockBean private ConciliacionService conciliacionService;
@@ -46,13 +50,13 @@ class BusquedaParametroWebMvcTest {
     @Test
     @WithMockUser(roles = "VENTAS")
     void ventasPasaLaBusquedaYLaOmiteSiNoLlega() throws Exception {
-        when(ventaService.buscar(any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
+        when(ventaService.buscar(any(), any(), any(), any(), any())).thenReturn(new PageImpl<>(List.of()));
 
         mvc.perform(get("/api/ventas").param("busqueda", "Fresón").param("tipoCliente", "PUBLICO")).andExpect(status().isOk());
-        verify(ventaService).buscar(isNull(), eq("PUBLICO"), eq("Fresón"), any());
+        verify(ventaService).buscar(isNull(), isNull(), eq("PUBLICO"), eq("Fresón"), any());
 
         mvc.perform(get("/api/ventas")).andExpect(status().isOk());
-        verify(ventaService).buscar(isNull(), isNull(), isNull(), any());
+        verify(ventaService).buscar(isNull(), isNull(), isNull(), isNull(), any());
     }
 
     @Test

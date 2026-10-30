@@ -119,6 +119,27 @@ public interface PresentacionRepository extends JpaRepository<Presentacion, UUID
     @Query("SELECT pr.id FROM Presentacion pr WHERE pr.activo = true AND pr.producto.activo = true")
     List<UUID> idsActivas();
 
+    // Buscador de la pantalla "Nueva venta" (autocompletado). Presentaciones activas de productos activos cuyo "producto presentacion"
+    // o codigo CONTIENEN el termino (sin acentos ni mayusculas). Orden por cercania: 0 = el producto o el codigo EMPIEZAN con el
+    // termino, 1 = alguna palabra empieza con el, 2 = solo lo contiene; dentro de cada rango, alfabetico. Los patrones llegan ya
+    // plegados y con los comodines escapados (BusquedaTexto.patronLike / patronPrefijo / patronPalabra).
+    // La ultima columna es ese rango (0, 1 o 2): el servicio lo usa para poner primero lo que se puede vender dentro de cada rango.
+    @Query(value = "SELECT pr.id, p.id, p.nombre, pr.nombre, pr.codigo, " +
+            "CASE " +
+            "  WHEN " + BusquedaTexto.PLEGAR_ABRE + "p.nombre" + BusquedaTexto.PLEGAR_CIERRA + " LIKE CAST(:prefijo AS varchar) ESCAPE '!' " +
+            "    OR " + BusquedaTexto.PLEGAR_ABRE + "pr.codigo" + BusquedaTexto.PLEGAR_CIERRA + " LIKE CAST(:prefijo AS varchar) ESCAPE '!' THEN 0 " +
+            "  WHEN " + BusquedaTexto.PLEGAR_ABRE + "p.nombre || ' ' || pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + " LIKE CAST(:palabra AS varchar) ESCAPE '!' THEN 1 " +
+            "  ELSE 2 END AS rango " +
+            "FROM presentacion pr JOIN producto p ON p.id = pr.producto_id " +
+            "WHERE pr.activo = true AND p.activo = true " +
+            "AND (" + BusquedaTexto.PLEGAR_ABRE + "p.nombre || ' ' || pr.nombre" + BusquedaTexto.PLEGAR_CIERRA + " LIKE CAST(:contiene AS varchar) ESCAPE '!' " +
+            "     OR " + BusquedaTexto.PLEGAR_ABRE + "pr.codigo" + BusquedaTexto.PLEGAR_CIERRA + " LIKE CAST(:contiene AS varchar) ESCAPE '!') " +
+            "ORDER BY rango, p.nombre, pr.nombre, pr.id " +
+            "LIMIT :limite",
+            nativeQuery = true)
+    List<Object[]> buscarParaVenta(@Param("contiene") String contiene, @Param("prefijo") String prefijo,
+                                   @Param("palabra") String palabra, @Param("limite") int limite);
+
     // Fase 3 (catalogo publico): presentaciones activas de productos activos que CONTROLAN vencimiento (solo esos
     // se publican), con producto y familia en la misma consulta. Orden estable para el catalogo.
     @Query("SELECT pr FROM Presentacion pr JOIN FETCH pr.producto p JOIN FETCH p.familia f "

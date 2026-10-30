@@ -158,6 +158,12 @@ public class PrecioQuesoService {
         return buscarVigenteOFallar(presentacion, modalidad, fecha).getPrecio();
     }
 
+    // Mismo criterio que resolverPrecioVigente, pero sin lanzar: vacio = no hay precio vigente a esa fecha (nunca configurado o
+    // programado para despues). Lo usa el buscador de "Nueva venta" para mostrar el producto como "sin precio" en vez de fallar.
+    public java.util.Optional<BigDecimal> precioVigenteSiExiste(UUID presentacionId, String modalidad, LocalDate fecha) {
+        return repository.findVigente(presentacionId, modalidad, fecha).map(PrecioQueso::getPrecio);
+    }
+
     // Para GET /api/ventas/precio-vigente (UX: mostrar el precio antes de confirmar la venta). El llamador
     // ya resolvio que presentacion representa al producto (ver VentaController/PresentacionService) --
     // este metodo trabaja siempre en terminos de presentacion, nunca de producto.

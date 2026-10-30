@@ -13,6 +13,8 @@ import com.planta.acopio.exception.ConflictoNegocioException;
 import com.planta.acopio.exception.GlobalExceptionHandler;
 import com.planta.acopio.service.ReglaVencimiento;
 import com.planta.acopio.service.ReservaService;
+import com.planta.acopio.service.BuscadorPresentacionesVentaService;
+import com.planta.acopio.service.ComprobanteVentaPdfService;
 import com.planta.acopio.service.VentaService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -50,6 +52,8 @@ class ReservaWebMvcTest {
     @Autowired private MockMvc mvc;
     @MockBean private ReservaService service;
     @MockBean private VentaService ventaService;
+    @MockBean private BuscadorPresentacionesVentaService buscadorPresentacionesVentaService;
+    @MockBean private ComprobanteVentaPdfService comprobanteVentaPdfService;
     @MockBean private ReglaVencimiento regla;
     @MockBean private JwtService jwtService;
     @MockBean private UsuarioDetailsService usuarioDetailsService;

@@ -203,22 +203,22 @@ class BusquedaYOrdenTablasIntegrationTest {
         Venta tercera = venta(dia, "u3-" + s, ana, pieza);
         Venta otroDia = venta(dia.minusDays(1), "u4-" + s, ana, botella);
 
-        var delDia = ventaRepository.buscarConFiltros(dia, null, BusquedaTexto.patronLike(s), PAGINA).getContent();
+        var delDia = ventaRepository.buscarConFiltros(dia, dia, null, BusquedaTexto.patronLike(s), PAGINA).getContent();
         assertThat(delDia).extracting(Venta::getId).containsExactly(tercera.getId(), segunda.getId(), primera.getId());
 
         // Producto con acento ("Frescón") encontrado como "freson"; presentacion; vendedor ("Niña" como "nina").
-        assertThat(ids(ventaRepository.buscarConFiltros(null, null, BusquedaTexto.patronLike("FRESON " + s), PAGINA)))
+        assertThat(ids(ventaRepository.buscarConFiltros(null, null, null, BusquedaTexto.patronLike("FRESON " + s), PAGINA)))
                 .containsExactlyInAnyOrder(primera.getId(), otroDia.getId());
-        assertThat(ids(ventaRepository.buscarConFiltros(null, null, BusquedaTexto.patronLike("pieza " + s), PAGINA)))
+        assertThat(ids(ventaRepository.buscarConFiltros(null, null, null, BusquedaTexto.patronLike("pieza " + s), PAGINA)))
                 .containsExactlyInAnyOrder(segunda.getId(), tercera.getId());
-        assertThat(ids(ventaRepository.buscarConFiltros(null, null, BusquedaTexto.patronLike("nina quispe " + s), PAGINA)))
+        assertThat(ids(ventaRepository.buscarConFiltros(null, null, null, BusquedaTexto.patronLike("nina quispe " + s), PAGINA)))
                 .containsExactly(segunda.getId());
         // Una venta con varias lineas no se duplica en el resultado ni en el total.
-        var combinada = ventaRepository.buscarConFiltros(null, null, BusquedaTexto.patronLike(s), PAGINA);
+        var combinada = ventaRepository.buscarConFiltros(null, null, null, BusquedaTexto.patronLike(s), PAGINA);
         assertThat(combinada.getTotalElements()).isEqualTo(4);
         // Los filtros de siempre siguen funcionando.
-        assertThat(ids(ventaRepository.buscarConFiltros(dia, "PUBLICO", null, PAGINA))).contains(primera.getId());
-        assertThat(ids(ventaRepository.buscarConFiltros(dia, "MAYORISTA", BusquedaTexto.patronLike(s), PAGINA))).isEmpty();
+        assertThat(ids(ventaRepository.buscarConFiltros(dia, dia, "PUBLICO", null, PAGINA))).contains(primera.getId());
+        assertThat(ids(ventaRepository.buscarConFiltros(dia, dia, "MAYORISTA", BusquedaTexto.patronLike(s), PAGINA))).isEmpty();
     }
 
     // ------------------------------------------------------------------------------------ lotes, recepciones

@@ -1,8 +1,10 @@
 package com.planta.acopio.entity;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.DynamicInsert;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.UUID;
 
 // Fase 1 (Producto + Presentacion): tipoQueso -> producto (rename, V10). Fase 3 (Produccion con varias
@@ -16,7 +18,12 @@ import java.util.UUID;
 // GENERADA por Postgres (no puede expresar una suma de filas de OTRA tabla) y pasa a fijarlo VentaService,
 // como suma de los subtotales de cada linea. El contrato movil (POST /api/ventas, una sola linea) no cambia
 // -- internamente ahora crea una venta con exactamente una fila de VentaDetalle (ver VentaService).
+//
+// V48: comprobante (nota de venta o boleta) con serie y numero correlativo. @DynamicInsert: un INSERT que no los mencione (la app
+// movil, las pruebas) recibe los valores por defecto de la BD (NOTA_VENTA / NV01 / siguiente numero); VentaService siempre los fija.
+// Las columnas no llevan nullable=false aqui por el mismo motivo: Hibernate no debe exigirlas antes de que la BD las rellene.
 @Entity
+@DynamicInsert
 @Table(name = "venta")
 public class Venta {
 
@@ -63,7 +70,30 @@ public class Venta {
     @Column(name = "comprador_ruc", length = 11)
     private String compradorRuc;
 
+    @Enumerated(EnumType.STRING)
+    @Column(name = "tipo_comprobante", length = 15)
+    private TipoComprobante tipoComprobante;
+
+    @Column(length = 4)
+    private String serie;
+
+    private Long numero;
+
+    // Solo lectura: la BD la rellena al insertar (V25, clock_timestamp()); es la hora real del registro.
+    @Column(name = "creado_en", insertable = false, updatable = false)
+    private LocalDateTime creadoEn;
+
     public Venta() {}
+
+    public TipoComprobante getTipoComprobante() { return tipoComprobante; }
+    public void setTipoComprobante(TipoComprobante tipoComprobante) { this.tipoComprobante = tipoComprobante; }
+    public String getSerie() { return serie; }
+    public void setSerie(String serie) { this.serie = serie; }
+    public Long getNumero() { return numero; }
+    public void setNumero(Long numero) { this.numero = numero; }
+    public LocalDateTime getCreadoEn() { return creadoEn; }
+    /** "NV01-00000041"; null si la venta aun no tiene numero (solo antes de insertarse). */
+    public String comprobante() { return TipoComprobante.formatear(serie, numero); }
 
     public TipoComprador getCompradorTipo() { return compradorTipo; }
     public void setCompradorTipo(TipoComprador compradorTipo) { this.compradorTipo = compradorTipo; }
